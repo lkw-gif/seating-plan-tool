@@ -32,6 +32,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { exportPlanDocx, exportPlanPdf } from "./exporters.js";
 import {
+  loadGoogleDriveHomeroomTeachers,
   loadGoogleDriveRoster,
   parseRosterFile,
   parseRosterText,
@@ -58,6 +59,22 @@ const methodLabels = {
 };
 
 const DEFAULT_DRIVE_URL = "";
+const DEFAULT_HOMEROOM_TEACHERS_URL =
+  "https://docs.google.com/spreadsheets/d/18nw6bnE-TRKrXOlOEagTb_FQbxjsv5_q/edit?usp=sharing";
+
+function normalizeClassCode(value) {
+  return String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function formatMonitorName(student) {
+  return [student.chineseName, student.englishName].filter(Boolean).join(" ");
+}
+
+function formatMonitorOption(student) {
+  return [student.number, student.chineseName, student.englishName]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 function loadSavedPlan() {
   try {
@@ -858,6 +875,7 @@ export function App() {
   const [femaleMonitor, setFemaleMonitor] = useState(saved.femaleMonitor ?? "");
   const [sourceLabel, setSourceLabel] = useState(saved.sourceLabel ?? "示範名單");
   const [driveRoster, setDriveRoster] = useState(loadDriveRosterSession);
+  const [homeroomTeachers, setHomeroomTeachers] = useState({});
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [rulesOpen, setRulesOpen] = useState(true);
   const [past, setPast] = useState([]);
@@ -893,6 +911,14 @@ export function App() {
       femalePercentage: percentage(female),
     };
   }, [students]);
+  const maleMonitorOptions = useMemo(
+    () => students.filter((student) => student.gender === "男"),
+    [students],
+  );
+  const femaleMonitorOptions = useMemo(
+    () => students.filter((student) => student.gender === "女"),
+    [students],
+  );
   const selectedSeatData = selectedSeat === null ? null : seats[selectedSeat];
   const selectedStudent = selectedSeatData
     ? studentMap.get(selectedSeatData.studentId)
@@ -937,6 +963,36 @@ export function App() {
       );
     }
   }, [driveRoster]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadGoogleDriveHomeroomTeachers(DEFAULT_HOMEROOM_TEACHERS_URL)
+      .then((result) => {
+        if (!cancelled) setHomeroomTeachers(result);
+      })
+      .catch(() => {
+        // Keep the saved/manual value when the shared file is temporarily unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const defaultTeachers = homeroomTeachers[normalizeClassCode(className)];
+    if (defaultTeachers) setTeachers(defaultTeachers);
+  }, [className, homeroomTeachers]);
+
+  useEffect(() => {
+    const maleNames = new Set(maleMonitorOptions.map(formatMonitorName));
+    const femaleNames = new Set(femaleMonitorOptions.map(formatMonitorName));
+    setMaleMonitor((current) =>
+      current && !maleNames.has(current) ? "" : current,
+    );
+    setFemaleMonitor((current) =>
+      current && !femaleNames.has(current) ? "" : current,
+    );
+  }, [maleMonitorOptions, femaleMonitorOptions]);
 
   const showToast = (message) => {
     window.clearTimeout(toastTimer.current);
@@ -1393,11 +1449,31 @@ export function App() {
                 </label>
                 <label>
                   男班長
-                  <input value={maleMonitor} onChange={(event) => setMaleMonitor(event.target.value)} />
+                  <select
+                    value={maleMonitor}
+                    onChange={(event) => setMaleMonitor(event.target.value)}
+                  >
+                    <option value="">未選擇</option>
+                    {maleMonitorOptions.map((student) => (
+                      <option value={formatMonitorName(student)} key={student.id}>
+                        {formatMonitorOption(student)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label>
                   女班長
-                  <input value={femaleMonitor} onChange={(event) => setFemaleMonitor(event.target.value)} />
+                  <select
+                    value={femaleMonitor}
+                    onChange={(event) => setFemaleMonitor(event.target.value)}
+                  >
+                    <option value="">未選擇</option>
+                    {femaleMonitorOptions.map((student) => (
+                      <option value={formatMonitorName(student)} key={student.id}>
+                        {formatMonitorOption(student)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
 

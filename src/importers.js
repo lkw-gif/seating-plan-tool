@@ -38,7 +38,14 @@ const fieldAliases = {
     "english",
   ],
   gender: ["性別", "gender", "sex"],
-  className: ["班別", "班級", "class", "classname"],
+  className: ["班別", "班級", "class", "classname", "classcode"],
+};
+
+const homeroomFieldAliases = {
+  initial: ["initial", "initials", "縮寫", "代號"],
+  englishName: ["ename", "englishname", "英文名", "英文姓名"],
+  chineseName: ["cname", "chinesename", "中文名", "中文姓名"],
+  className: ["class", "classname", "classcode", "班別", "班級"],
 };
 
 function normalize(value) {
@@ -148,6 +155,69 @@ function workbookToStudents(buffer) {
   return rowsToStudents(rows);
 }
 
+export function rowsToHomeroomTeachers(rawRows) {
+  const rows = rawRows
+    .map((row) => (Array.isArray(row) ? row : Object.values(row)))
+    .map((row) => row.map((cell) => String(cell ?? "").trim()))
+    .filter((row) => row.some(Boolean));
+
+  if (rows.length < 2) {
+    throw new Error("班主任名單內沒有可讀取的資料。 ");
+  }
+
+  const headers = rows[0].map(normalize);
+  const columns = Object.fromEntries(
+    Object.entries(homeroomFieldAliases).map(([field, aliases]) => [
+      field,
+      findColumn(headers, aliases),
+    ]),
+  );
+
+  if (columns.initial < 0 || columns.className < 0) {
+    throw new Error("班主任名單需要包含 Initial 及 Class 欄位。 ");
+  }
+
+  const teachersByClass = {};
+  rows.slice(1).forEach((row) => {
+    const initial = row[columns.initial] ?? "";
+    const className = (row[columns.className] ?? "")
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    const chineseName = columns.chineseName >= 0 ? row[columns.chineseName] : "";
+    const englishName = columns.englishName >= 0 ? row[columns.englishName] : "";
+    const name = chineseName || englishName;
+    if (!initial || !className || !name) return;
+
+    const formattedName = `${name}（${initial.toUpperCase()}）`;
+    teachersByClass[className] ??= [];
+    if (!teachersByClass[className].includes(formattedName)) {
+      teachersByClass[className].push(formattedName);
+    }
+  });
+
+  if (!Object.keys(teachersByClass).length) {
+    throw new Error("班主任名單內找不到班別或教師姓名。 ");
+  }
+
+  return Object.fromEntries(
+    Object.entries(teachersByClass).map(([className, teachers]) => [
+      className,
+      teachers.join("、"),
+    ]),
+  );
+}
+
+function workbookToHomeroomTeachers(buffer) {
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+  return rowsToHomeroomTeachers(rows);
+}
+
 export async function parseRosterFile(file) {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
@@ -218,4 +288,28 @@ export async function loadGoogleDriveRoster(rawUrl) {
   }
 
   return { students: classedStudents, classes };
+}
+
+export async function loadGoogleDriveHomeroomTeachers(rawUrl) {
+  let exportUrl;
+  try {
+    exportUrl = googleExportUrl(rawUrl.trim());
+  } catch {
+    throw new Error("班主任 Google Drive 連結格式不正確。 ");
+  }
+
+  const response = await fetch(exportUrl);
+  if (!response.ok) {
+    throw new Error("未能讀取班主任名單，請確認連結分享權限。 ");
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (
+    !contentType.includes("spreadsheet") &&
+    !contentType.includes("octet-stream")
+  ) {
+    throw new Error("班主任連結不是可讀取的 Excel / Google Sheets 檔案。 ");
+  }
+
+  return workbookToHomeroomTeachers(await response.arrayBuffer());
 }
