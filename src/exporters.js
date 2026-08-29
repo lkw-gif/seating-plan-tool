@@ -73,12 +73,23 @@ function studentCell(seat, student, width) {
     children.push(textParagraph("不可用", { color: "7B8794", size: 18 }));
   } else if (student) {
     children.push(
-      textParagraph(student.chineseName || " ", { bold: true, size: 20 }),
+      textParagraph(student.number || " ", {
+        alignment: AlignmentType.LEFT,
+        bold: true,
+        size: 20,
+        color: "52606D",
+        after: 0,
+      }),
+      textParagraph(student.chineseName || " ", {
+        bold: true,
+        size: 24,
+        after: 0,
+      }),
       textParagraph(student.englishName || " ", {
         alignment: AlignmentType.CENTER,
-        size: 18,
+        size: 21,
+        after: 0,
       }),
-      textParagraph(student.number || " ", { size: 17, color: "52606D" }),
     );
   } else {
     children.push(textParagraph(" "));
@@ -86,8 +97,8 @@ function studentCell(seat, student, width) {
 
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
-    verticalAlign: VerticalAlign.CENTER,
-    margins: { top: 90, bottom: 90, left: 70, right: 70 },
+    verticalAlign: student ? VerticalAlign.TOP : VerticalAlign.CENTER,
+    margins: { top: 70, bottom: 70, left: 80, right: 80 },
     shading: seat.disabled
       ? { fill: "F1F3F5", type: ShadingType.CLEAR, color: "auto" }
       : student?.gender === "男"
@@ -154,7 +165,7 @@ export async function exportPlanDocx({
       if (aisleAfter.has(col)) cells.push(aisleCell(aisleWidth));
     }
     return new TableRow({
-      height: { value: 1180, rule: HeightRule.ATLEAST },
+      height: { value: 1120, rule: HeightRule.ATLEAST },
       children: cells,
     });
   });
@@ -177,13 +188,19 @@ export async function exportPlanDocx({
               height: 16838,
               orientation: PageOrientation.LANDSCAPE,
             },
-            margin: { top: 420, right: 560, bottom: 420, left: 560 },
+            margin: { top: 300, right: 560, bottom: 300, left: 560 },
           },
         },
         children: [
+          textParagraph("課室座位表  Seating Plan", {
+            bold: true,
+            size: 30,
+            after: 70,
+          }),
           new Table({
+            alignment: AlignmentType.CENTER,
             width: { size: usableWidth, type: WidthType.DXA },
-            columnWidths: [4200, 6300, 4200],
+            columnWidths: [7350, 7350],
             borders: {
               top: { style: BorderStyle.NONE },
               bottom: { style: BorderStyle.NONE },
@@ -196,23 +213,19 @@ export async function exportPlanDocx({
               new TableRow({
                 children: [
                   new TableCell({
+                    width: { size: 7350, type: WidthType.DXA },
+                    verticalAlign: VerticalAlign.TOP,
                     children: [
                       textParagraph(`班別：${className}`, {
                         alignment: AlignmentType.LEFT,
                         bold: true,
-                        size: 30,
+                        size: 36,
                       }),
                     ],
                   }),
                   new TableCell({
-                    children: [
-                      textParagraph("課室座位表  Seating Plan", {
-                        bold: true,
-                        size: 25,
-                      }),
-                    ],
-                  }),
-                  new TableCell({
+                    width: { size: 7350, type: WidthType.DXA },
+                    verticalAlign: VerticalAlign.TOP,
                     children: [
                       textParagraph(`班主任：${teachers || ""}`, {
                         alignment: AlignmentType.RIGHT,
