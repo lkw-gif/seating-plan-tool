@@ -948,6 +948,21 @@ textarea {
   font-size: 14px;
 }
 
+.roster-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clear-roster-button {
+  color: #a43a3a;
+  border-color: #e5b8b8;
+}
+
+.clear-roster-button:hover {
+  background: #fff1f1;
+}
+
 .source-band {
   min-height: 68px;
   display: flex;
@@ -1011,6 +1026,12 @@ textarea {
   overflow: auto;
   border: 1px solid var(--line);
   background: #fff;
+}
+
+.roster-empty-state {
+  height: 140px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .roster-table {
@@ -1616,6 +1637,16 @@ textarea {
   .page-heading .primary-button,
   .export-actions,
   .export-actions button {
+    width: 100%;
+  }
+
+  .roster-heading-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .roster-heading-actions button {
     width: 100%;
   }
 

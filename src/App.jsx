@@ -68,11 +68,11 @@ function normalizeClassCode(value) {
 }
 
 function formatMonitorName(student) {
-  return [student.chineseName, student.englishName].filter(Boolean).join(" ");
+  return student.chineseName;
 }
 
 function formatMonitorOption(student) {
-  return [student.number, student.chineseName, student.englishName]
+  return [student.number, student.chineseName]
     .filter(Boolean)
     .join(" · ");
 }
@@ -691,6 +691,7 @@ function RosterStep({
   setSearch,
   sourceLabel,
   onOpenImport,
+  onClearRoster,
   onDeleteStudent,
   onContinue,
 }) {
@@ -707,10 +708,21 @@ function RosterStep({
           <h1>學生名單</h1>
           <p>選擇全校名單來源，再確認今次要編排的班別。</p>
         </div>
-        <button type="button" className="primary-button" onClick={onOpenImport}>
-          <Plus size={18} />
-          匯入或新增學生
-        </button>
+        <div className="roster-heading-actions">
+          <button
+            type="button"
+            className="secondary-button clear-roster-button"
+            onClick={onClearRoster}
+            disabled={!students.length}
+          >
+            <Trash2 size={18} />
+            清空所有名單
+          </button>
+          <button type="button" className="primary-button" onClick={onOpenImport}>
+            <Plus size={18} />
+            匯入或新增學生
+          </button>
+        </div>
       </div>
 
       <div className="source-band">
@@ -751,19 +763,27 @@ function RosterStep({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((student) => (
-              <tr key={student.id}>
-                <td>{student.number}</td>
-                <td><strong>{student.chineseName}</strong></td>
-                <td>{student.englishName}</td>
-                <td>{student.gender || "—"}</td>
-                <td>
-                  <IconButton label={`刪除 ${student.chineseName}`} onClick={() => onDeleteStudent(student.id)}>
-                    <Trash2 size={16} />
-                  </IconButton>
+            {filtered.length ? (
+              filtered.map((student) => (
+                <tr key={student.id}>
+                  <td>{student.number}</td>
+                  <td><strong>{student.chineseName}</strong></td>
+                  <td>{student.englishName}</td>
+                  <td>{student.gender || "—"}</td>
+                  <td>
+                    <IconButton label={`刪除 ${student.chineseName}`} onClick={() => onDeleteStudent(student.id)}>
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="roster-empty-state" colSpan="5">
+                  {students.length ? "找不到符合條件的學生" : "名單已清空"}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -873,7 +893,11 @@ export function App() {
   const [maleMonitor, setMaleMonitor] = useState(
     saved.maleMonitor ?? saved.monitor ?? "",
   );
+  const [maleMonitor2, setMaleMonitor2] = useState(saved.maleMonitor2 ?? "");
   const [femaleMonitor, setFemaleMonitor] = useState(saved.femaleMonitor ?? "");
+  const [femaleMonitor2, setFemaleMonitor2] = useState(
+    saved.femaleMonitor2 ?? "",
+  );
   const [sourceLabel, setSourceLabel] = useState(saved.sourceLabel ?? "示範名單");
   const [driveRoster, setDriveRoster] = useState(loadDriveRosterSession);
   const [homeroomTeachers, setHomeroomTeachers] = useState({});
@@ -913,13 +937,21 @@ export function App() {
     };
   }, [students]);
   const maleMonitorOptions = useMemo(
-    () => students.filter((student) => student.gender === "男"),
+    () => students.filter(
+      (student) => student.gender === "男" && student.chineseName,
+    ),
     [students],
   );
   const femaleMonitorOptions = useMemo(
-    () => students.filter((student) => student.gender === "女"),
+    () => students.filter(
+      (student) => student.gender === "女" && student.chineseName,
+    ),
     [students],
   );
+  const maleMonitorNames = [maleMonitor, maleMonitor2].filter(Boolean).join("、");
+  const femaleMonitorNames = [femaleMonitor, femaleMonitor2]
+    .filter(Boolean)
+    .join("、");
   const selectedSeatData = selectedSeat === null ? null : seats[selectedSeat];
   const selectedStudent = selectedSeatData
     ? studentMap.get(selectedSeatData.studentId)
@@ -938,7 +970,9 @@ export function App() {
         className,
         teachers,
         maleMonitor,
+        maleMonitor2,
         femaleMonitor,
+        femaleMonitor2,
         sourceLabel,
       }),
     );
@@ -952,7 +986,9 @@ export function App() {
     className,
     teachers,
     maleMonitor,
+    maleMonitor2,
     femaleMonitor,
+    femaleMonitor2,
     sourceLabel,
   ]);
 
@@ -990,7 +1026,13 @@ export function App() {
     setMaleMonitor((current) =>
       current && !maleNames.has(current) ? "" : current,
     );
+    setMaleMonitor2((current) =>
+      current && !maleNames.has(current) ? "" : current,
+    );
     setFemaleMonitor((current) =>
+      current && !femaleNames.has(current) ? "" : current,
+    );
+    setFemaleMonitor2((current) =>
       current && !femaleNames.has(current) ? "" : current,
     );
   }, [maleMonitorOptions, femaleMonitorOptions]);
@@ -1211,13 +1253,30 @@ export function App() {
     showToast("學生已從名單移除");
   };
 
+  const clearRoster = () => {
+    if (!window.confirm("確定要清空所有學生名單？此操作不能復原。")) return;
+    setStudents([]);
+    setSeats(createEmptySeats(rows, cols));
+    setDriveRoster(null);
+    sessionStorage.removeItem("seat-planner-drive-roster");
+    setMaleMonitor("");
+    setMaleMonitor2("");
+    setFemaleMonitor("");
+    setFemaleMonitor2("");
+    setSourceLabel("尚未載入名單");
+    setSelectedSeat(null);
+    setPast([]);
+    setFuture([]);
+    showToast("已清空所有學生名單");
+  };
+
   const handleDocxExport = async () => {
     try {
       await exportPlanDocx({
         className,
         teachers,
-        maleMonitor,
-        femaleMonitor,
+        maleMonitor: maleMonitorNames,
+        femaleMonitor: femaleMonitorNames,
         rows,
         cols,
         columnGaps,
@@ -1296,6 +1355,7 @@ export function App() {
               setSearch={setSearch}
               sourceLabel={sourceLabel}
               onOpenImport={() => setImportOpen(true)}
+              onClearRoster={clearRoster}
               onDeleteStudent={deleteStudent}
               onContinue={() => setActiveStep(2)}
             />
@@ -1428,8 +1488,8 @@ export function App() {
                 <PrintPlan
                   className={className}
                   teachers={teachers}
-                  maleMonitor={maleMonitor}
-                  femaleMonitor={femaleMonitor}
+                  maleMonitor={maleMonitorNames}
+                  femaleMonitor={femaleMonitorNames}
                   rows={rows}
                   cols={cols}
                   columnGaps={columnGaps}
@@ -1449,10 +1509,14 @@ export function App() {
                   <input value={teachers} onChange={(event) => setTeachers(event.target.value)} />
                 </label>
                 <label>
-                  男班長
+                  男班長（一）
                   <select
                     value={maleMonitor}
-                    onChange={(event) => setMaleMonitor(event.target.value)}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setMaleMonitor(nextValue);
+                      if (nextValue === maleMonitor2) setMaleMonitor2("");
+                    }}
                   >
                     <option value="">未選擇</option>
                     {maleMonitorOptions.map((student) => (
@@ -1463,10 +1527,30 @@ export function App() {
                   </select>
                 </label>
                 <label>
-                  女班長
+                  男班長（二）
+                  <select
+                    value={maleMonitor2}
+                    onChange={(event) => setMaleMonitor2(event.target.value)}
+                  >
+                    <option value="">未選擇</option>
+                    {maleMonitorOptions
+                      .filter((student) => formatMonitorName(student) !== maleMonitor)
+                      .map((student) => (
+                        <option value={formatMonitorName(student)} key={student.id}>
+                          {formatMonitorOption(student)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  女班長（一）
                   <select
                     value={femaleMonitor}
-                    onChange={(event) => setFemaleMonitor(event.target.value)}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setFemaleMonitor(nextValue);
+                      if (nextValue === femaleMonitor2) setFemaleMonitor2("");
+                    }}
                   >
                     <option value="">未選擇</option>
                     {femaleMonitorOptions.map((student) => (
@@ -1474,6 +1558,22 @@ export function App() {
                         {formatMonitorOption(student)}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label>
+                  女班長（二）
+                  <select
+                    value={femaleMonitor2}
+                    onChange={(event) => setFemaleMonitor2(event.target.value)}
+                  >
+                    <option value="">未選擇</option>
+                    {femaleMonitorOptions
+                      .filter((student) => formatMonitorName(student) !== femaleMonitor)
+                      .map((student) => (
+                        <option value={formatMonitorName(student)} key={student.id}>
+                          {formatMonitorOption(student)}
+                        </option>
+                      ))}
                   </select>
                 </label>
               </div>
