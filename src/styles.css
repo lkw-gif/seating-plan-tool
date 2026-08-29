@@ -593,6 +593,7 @@ button:disabled {
 .english-name {
   color: #66737f;
   font-size: 11px;
+  text-align: center;
 }
 
 .seat-number {
@@ -987,6 +988,22 @@ textarea {
 .source-band small {
   color: #678273;
   font-size: 11px;
+}
+
+.source-guidance {
+  max-width: 430px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #496a59;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.source-guidance svg {
+  flex: 0 0 auto;
 }
 
 .source-band button {
@@ -1413,7 +1430,9 @@ textarea {
 }
 
 .print-seat span {
+  width: 100%;
   font-size: 13px;
+  text-align: center;
 }
 
 .print-seat small {
@@ -1593,6 +1612,16 @@ textarea {
 
   .class-statistics span:last-child {
     border-bottom: 0;
+  }
+
+  .source-band {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-guidance {
+    max-width: none;
+    text-align: left;
   }
 
   .classroom-stage {

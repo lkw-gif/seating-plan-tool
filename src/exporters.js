@@ -74,7 +74,10 @@ function studentCell(seat, student, width) {
   } else if (student) {
     children.push(
       textParagraph(student.chineseName || " ", { bold: true, size: 20 }),
-      textParagraph(student.englishName || " ", { size: 18 }),
+      textParagraph(student.englishName || " ", {
+        alignment: AlignmentType.CENTER,
+        size: 18,
+      }),
       textParagraph(student.number || " ", { size: 17, color: "52606D" }),
     );
   } else {

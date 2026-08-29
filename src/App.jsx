@@ -456,7 +456,7 @@ function ImportDialog({
   busy,
   error,
 }) {
-  const [tab, setTab] = useState("upload");
+  const [tab, setTab] = useState("drive");
   const [driveUrl, setDriveUrl] = useState(DEFAULT_DRIVE_URL);
   const [selectedDriveClass, setSelectedDriveClass] = useState("");
   const [text, setText] = useState(
@@ -501,8 +501,8 @@ function ImportDialog({
 
         <div className="dialog-tabs" role="tablist">
           {[
-            ["upload", "上載檔案", Upload],
             ["drive", "Google Drive", Cloud],
+            ["upload", "上載檔案", Upload],
             ["paste", "貼上名單", FileText],
             ["manual", "新增一人", Plus],
           ].map(([value, label, Icon]) => (
@@ -733,9 +733,10 @@ function RosterStep({
             <strong>{sourceLabel}</strong>
           </span>
         </div>
-        <button type="button" onClick={onOpenImport}>
-          更改來源
-        </button>
+        <p className="source-guidance">
+          <Info size={16} />
+          請按「匯入或新增學生」，在 Google Drive 讀取全校名單
+        </p>
       </div>
 
       <div className="roster-toolbar">
