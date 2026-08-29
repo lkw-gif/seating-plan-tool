@@ -58,7 +58,8 @@ const methodLabels = {
   "number-column-right": "依學號直排（右至左）",
 };
 
-const DEFAULT_DRIVE_URL = "";
+const DEFAULT_DRIVE_URL =
+  "https://docs.google.com/spreadsheets/d/1nbcmUVagKQCKrz4mho56ryDAvwJhUxd6/edit?usp=sharing";
 const DEFAULT_HOMEROOM_TEACHERS_URL =
   "https://docs.google.com/spreadsheets/d/18nw6bnE-TRKrXOlOEagTb_FQbxjsv5_q/edit?usp=sharing";
 
