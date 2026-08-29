@@ -54,7 +54,12 @@ function downloadBlob(blob, filename) {
 function textParagraph(text, options = {}) {
   return new Paragraph({
     alignment: options.alignment ?? AlignmentType.CENTER,
-    spacing: { before: 0, after: options.after ?? 30, line: 240 },
+    spacing: {
+      before: 0,
+      after: options.after ?? 30,
+      line: options.line ?? 240,
+    },
+    keepLines: options.keepLines ?? false,
     children: [
       new TextRun({
         text,
@@ -64,6 +69,68 @@ function textParagraph(text, options = {}) {
         color: options.color ?? "1F2933",
       }),
     ],
+  });
+}
+
+function englishTextUnits(text) {
+  return [...text].reduce((total, character) => {
+    if (character === " ") return total + 0.32;
+    if (/[MW]/i.test(character)) return total + 0.84;
+    if (/[I1]/i.test(character)) return total + 0.34;
+    if (/[-']/i.test(character)) return total + 0.3;
+    return total + 0.62;
+  }, 0);
+}
+
+function splitEnglishName(words) {
+  if (words.length !== 4) return [words.join(" ")];
+
+  let bestSplit = 2;
+  let bestWidth = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < words.length; index += 1) {
+    const leftWidth = englishTextUnits(words.slice(0, index).join(" "));
+    const rightWidth = englishTextUnits(words.slice(index).join(" "));
+    const widestLine = Math.max(leftWidth, rightWidth);
+    if (widestLine < bestWidth) {
+      bestWidth = widestLine;
+      bestSplit = index;
+    }
+  }
+
+  return [
+    words.slice(0, bestSplit).join(" "),
+    words.slice(bestSplit).join(" "),
+  ];
+}
+
+function englishNameParagraph(name, seatWidth) {
+  const words = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const lines = splitEnglishName(words.length ? words : [" "]);
+  const widestLine = Math.max(...lines.map(englishTextUnits), 1);
+  const availablePoints = Math.max(24, (seatWidth - 160) / 20);
+  const maximumSize = lines.length === 2 ? 19 : 21;
+  const size = Math.max(
+    11,
+    Math.min(maximumSize, Math.floor((availablePoints * 0.9 * 2) / widestLine)),
+  );
+
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 0, after: 0, line: lines.length === 2 ? 215 : 205 },
+    keepLines: true,
+    children: lines.map(
+      (line, index) =>
+        new TextRun({
+          text: line.replaceAll(" ", "\u00A0"),
+          break: index === 0 ? 0 : 1,
+          size,
+          font: "Microsoft JhengHei",
+          color: "1F2933",
+        }),
+    ),
   });
 }
 
@@ -79,17 +146,15 @@ function studentCell(seat, student, width) {
         size: 20,
         color: "52606D",
         after: 0,
+        line: 190,
       }),
       textParagraph(student.chineseName || " ", {
         bold: true,
         size: 24,
         after: 0,
+        line: 220,
       }),
-      textParagraph(student.englishName || " ", {
-        alignment: AlignmentType.CENTER,
-        size: 21,
-        after: 0,
-      }),
+      englishNameParagraph(student.englishName, width),
     );
   } else {
     children.push(textParagraph(" "));
@@ -98,7 +163,7 @@ function studentCell(seat, student, width) {
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
     verticalAlign: student ? VerticalAlign.TOP : VerticalAlign.CENTER,
-    margins: { top: 70, bottom: 70, left: 80, right: 80 },
+    margins: { top: 55, bottom: 45, left: 80, right: 80 },
     shading: seat.disabled
       ? { fill: "F1F3F5", type: ShadingType.CLEAR, color: "auto" }
       : student?.gender === "男"
@@ -165,7 +230,8 @@ export async function exportPlanDocx({
       if (aisleAfter.has(col)) cells.push(aisleCell(aisleWidth));
     }
     return new TableRow({
-      height: { value: 1120, rule: HeightRule.ATLEAST },
+      height: { value: 1400, rule: HeightRule.EXACT },
+      cantSplit: true,
       children: cells,
     });
   });
@@ -188,14 +254,15 @@ export async function exportPlanDocx({
               height: 16838,
               orientation: PageOrientation.LANDSCAPE,
             },
-            margin: { top: 300, right: 560, bottom: 300, left: 560 },
+            margin: { top: 260, right: 560, bottom: 260, left: 560 },
           },
         },
         children: [
           textParagraph("課室座位表  Seating Plan", {
             bold: true,
             size: 30,
-            after: 70,
+            after: 25,
+            line: 220,
           }),
           new Table({
             alignment: AlignmentType.CENTER,
@@ -220,6 +287,8 @@ export async function exportPlanDocx({
                         alignment: AlignmentType.LEFT,
                         bold: true,
                         size: 36,
+                        after: 0,
+                        line: 220,
                       }),
                     ],
                   }),
@@ -230,14 +299,20 @@ export async function exportPlanDocx({
                       textParagraph(`班主任：${teachers || ""}`, {
                         alignment: AlignmentType.RIGHT,
                         size: 20,
+                        after: 0,
+                        line: 205,
                       }),
                       textParagraph(`男班長：${maleMonitor || ""}`, {
                         alignment: AlignmentType.RIGHT,
                         size: 20,
+                        after: 0,
+                        line: 205,
                       }),
                       textParagraph(`女班長：${femaleMonitor || ""}`, {
                         alignment: AlignmentType.RIGHT,
                         size: 20,
+                        after: 0,
+                        line: 205,
                       }),
                     ],
                   }),
@@ -245,11 +320,11 @@ export async function exportPlanDocx({
               }),
             ],
           }),
-          new Paragraph({ spacing: { after: 90 } }),
+          new Paragraph({ spacing: { after: 25, line: 80 } }),
           new Table({
             alignment: AlignmentType.CENTER,
             width: { size: usableWidth, type: WidthType.DXA },
-            columnWidths: [1500, 2050, 7600, 2050, 1500],
+            columnWidths: [1500, 2250, 7200, 2250, 1500],
             borders: {
               top: { style: BorderStyle.NONE },
               bottom: { style: BorderStyle.NONE },
@@ -260,7 +335,8 @@ export async function exportPlanDocx({
             },
             rows: [
               new TableRow({
-                height: { value: 520, rule: HeightRule.ATLEAST },
+                height: { value: 430, rule: HeightRule.EXACT },
+                cantSplit: true,
                 children: [
                   new TableCell({
                     width: { size: 1500, type: WidthType.DXA },
@@ -272,22 +348,24 @@ export async function exportPlanDocx({
                       left: doorBorder,
                       right: doorBorder,
                     },
-                    margins: { top: 80, bottom: 80, left: 80, right: 80 },
+                    margins: { top: 25, bottom: 25, left: 60, right: 60 },
                     children: [
                       textParagraph("門口", {
                         alignment: AlignmentType.CENTER,
                         bold: true,
                         size: 20,
+                        after: 0,
+                        line: 200,
                       }),
                     ],
                   }),
                   new TableCell({
-                    width: { size: 2050, type: WidthType.DXA },
+                    width: { size: 2250, type: WidthType.DXA },
                     borders: noBorders,
                     children: [new Paragraph("")],
                   }),
                   new TableCell({
-                    width: { size: 7600, type: WidthType.DXA },
+                    width: { size: 7200, type: WidthType.DXA },
                     verticalAlign: VerticalAlign.CENTER,
                     shading: { fill: "315C47", type: ShadingType.CLEAR, color: "auto" },
                     borders: {
@@ -296,11 +374,19 @@ export async function exportPlanDocx({
                       left: boardBorder,
                       right: boardBorder,
                     },
-                    margins: { top: 80, bottom: 80, left: 80, right: 80 },
-                    children: [textParagraph("黑板", { color: "FFFFFF", bold: true, size: 22 })],
+                    margins: { top: 25, bottom: 25, left: 60, right: 60 },
+                    children: [
+                      textParagraph("黑板", {
+                        color: "FFFFFF",
+                        bold: true,
+                        size: 22,
+                        after: 0,
+                        line: 200,
+                      }),
+                    ],
                   }),
                   new TableCell({
-                    width: { size: 2050, type: WidthType.DXA },
+                    width: { size: 2250, type: WidthType.DXA },
                     borders: noBorders,
                     children: [new Paragraph("")],
                   }),
@@ -313,24 +399,34 @@ export async function exportPlanDocx({
               }),
             ],
           }),
-          new Paragraph({ spacing: { after: 40 } }),
+          new Paragraph({ spacing: { after: 15, line: 60 } }),
           new Table({
             alignment: AlignmentType.CENTER,
             width: { size: 2500, type: WidthType.DXA },
             columnWidths: [2500],
             rows: [
               new TableRow({
+                height: { value: 320, rule: HeightRule.EXACT },
+                cantSplit: true,
                 children: [
                   new TableCell({
                     shading: { fill: "E6CAA0", type: ShadingType.CLEAR, color: "auto" },
                     borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder },
-                    children: [textParagraph("教師桌", { bold: true, size: 19 })],
+                    margins: { top: 15, bottom: 15, left: 40, right: 40 },
+                    children: [
+                      textParagraph("教師桌", {
+                        bold: true,
+                        size: 19,
+                        after: 0,
+                        line: 190,
+                      }),
+                    ],
                   }),
                 ],
               }),
             ],
           }),
-          new Paragraph({ spacing: { after: 90 } }),
+          new Paragraph({ spacing: { after: 35, line: 80 } }),
           new Table({
             alignment: AlignmentType.CENTER,
             width: { size: usableWidth, type: WidthType.DXA },
