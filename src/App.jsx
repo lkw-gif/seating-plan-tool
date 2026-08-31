@@ -58,8 +58,6 @@ const methodLabels = {
   "number-column-right": "依學號直排（右至左）",
 };
 
-const DEFAULT_DRIVE_URL =
-  "https://docs.google.com/spreadsheets/d/1nbcmUVagKQCKrz4mho56ryDAvwJhUxd6/edit?usp=sharing";
 const DEFAULT_HOMEROOM_TEACHERS_URL =
   "https://docs.google.com/spreadsheets/d/18nw6bnE-TRKrXOlOEagTb_FQbxjsv5_q/edit?usp=sharing";
 
@@ -457,7 +455,7 @@ function ImportDialog({
   error,
 }) {
   const [tab, setTab] = useState("drive");
-  const [driveUrl, setDriveUrl] = useState(DEFAULT_DRIVE_URL);
+  const [driveUrl, setDriveUrl] = useState("");
   const [selectedDriveClass, setSelectedDriveClass] = useState("");
   const [text, setText] = useState(
     "學號,中文名,英文名,性別\n01,陳大文,Chan Tai Man,男",
@@ -551,13 +549,13 @@ function ImportDialog({
                 Google Sheets 或 Drive 共用連結
                 <input
                   type="url"
-                  placeholder="https://docs.google.com/spreadsheets/d/..."
+                  placeholder="請貼上你的 Google Sheets 或 Drive 連結"
                   value={driveUrl}
                   onChange={(event) => setDriveUrl(event.target.value)}
                 />
               </label>
               <p className="field-help">
-                系統會讀取 A 至 E 欄：班別、學號、中文名、英文名、性別；可以有或沒有表頭。
+                請輸入你有權限讀取的名單；系統會讀取 A 至 E 欄：班別、學號、中文名、英文名、性別；可以有或沒有表頭。
               </p>
               <button
                 type="button"

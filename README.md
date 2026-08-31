@@ -19,4 +19,4 @@ npm run build
 
 ## 私隱
 
-學生名單只在使用者的瀏覽器內處理及儲存。工具已預設一條學生名單 Google Drive 共用連結，使用者可在匯入視窗改用其他連結；班主任資料則會由已設定的 Google Sheets 共用連結自動讀取。
+學生名單只在使用者的瀏覽器內處理及儲存。學生名單不會預設任何 Google Drive 連結，使用者可在匯入視窗貼上自己的 Google Sheets / Drive 連結，或上載 Excel、CSV、文字檔及 Word 名單；班主任資料則會由已設定的 Google Sheets 共用連結自動讀取。
