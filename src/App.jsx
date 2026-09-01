@@ -37,7 +37,6 @@ import {
   parseRosterFile,
   parseRosterText,
 } from "./importers.js";
-import { sampleStudents } from "./sampleData.js";
 import {
   autoArrangeSeats,
   createEmptySeats,
@@ -873,15 +872,28 @@ function PrintPlan({
 
 export function App() {
   const saved = useMemo(loadSavedPlan, []);
-  const [activeStep, setActiveStep] = useState(2);
-  const [students, setStudents] = useState(saved.students ?? sampleStudents);
+  const savedDemoRoster = saved.sourceLabel === "示範名單";
+  const savedStudents =
+    savedDemoRoster
+      ? []
+      : Array.isArray(saved.students)
+        ? saved.students
+        : [];
+  const initialSourceLabel =
+    savedDemoRoster || !savedStudents.length
+      ? "尚未載入名單"
+      : saved.sourceLabel ?? "尚未載入名單";
+  const [activeStep, setActiveStep] = useState(savedStudents.length ? 2 : 1);
+  const [students, setStudents] = useState(savedStudents);
   const [rows, setRows] = useState(saved.rows ?? 5);
   const [cols, setCols] = useState(saved.cols ?? 7);
   const [columnGaps, setColumnGaps] = useState(() =>
     normalizeColumnGaps(saved.columnGaps, saved.cols ?? 7),
   );
   const [seats, setSeats] = useState(
-    saved.seats ?? createInitialSeats(saved.students ?? sampleStudents, saved.rows ?? 5, saved.cols ?? 7),
+    savedDemoRoster
+      ? createInitialSeats(savedStudents, saved.rows ?? 5, saved.cols ?? 7)
+      : saved.seats ?? createInitialSeats(savedStudents, saved.rows ?? 5, saved.cols ?? 7),
   );
   const [config, setConfig] = useState({
     ...defaultConfig,
@@ -897,7 +909,7 @@ export function App() {
   const [femaleMonitor2, setFemaleMonitor2] = useState(
     saved.femaleMonitor2 ?? "",
   );
-  const [sourceLabel, setSourceLabel] = useState(saved.sourceLabel ?? "示範名單");
+  const [sourceLabel, setSourceLabel] = useState(initialSourceLabel);
   const [driveRoster, setDriveRoster] = useState(loadDriveRosterSession);
   const [homeroomTeachers, setHomeroomTeachers] = useState({});
   const [selectedSeat, setSelectedSeat] = useState(null);
