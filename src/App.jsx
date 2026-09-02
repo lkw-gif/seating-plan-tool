@@ -39,6 +39,7 @@ import {
 } from "./importers.js";
 import {
   autoArrangeSeats,
+  clearSeatAssignments,
   createEmptySeats,
   createInitialSeats,
   getUnassignedStudents,
@@ -298,7 +299,7 @@ function ClassroomPlan({
       </div>
       <div className="canvas-hint">
         <Info size={15} />
-        拖動學生卡，或先後點選兩個座位互換；選取座位後可在右側鎖定或停用。
+        先點學生卡再點座位，或直接拖放；已入座學生可先後點選兩個座位互換。
       </div>
     </section>
   );
@@ -922,6 +923,8 @@ export function App() {
   const [importError, setImportError] = useState("");
   const [toast, setToast] = useState("");
   const [unassignedOpen, setUnassignedOpen] = useState(true);
+  const [selectedUnassignedStudentId, setSelectedUnassignedStudentId] =
+    useState(null);
   const dragPayload = useRef(null);
   const toastTimer = useRef(null);
   const printRef = useRef(null);
@@ -966,6 +969,9 @@ export function App() {
   const selectedSeatData = selectedSeat === null ? null : seats[selectedSeat];
   const selectedStudent = selectedSeatData
     ? studentMap.get(selectedSeatData.studentId)
+    : null;
+  const selectedUnassignedStudent = selectedUnassignedStudentId
+    ? studentMap.get(selectedUnassignedStudentId)
     : null;
 
   useEffect(() => {
@@ -1079,7 +1085,18 @@ export function App() {
   const arrange = () => {
     commitSeats(autoArrangeSeats({ seats, students, rows, cols, config }));
     setSelectedSeat(null);
+    setSelectedUnassignedStudentId(null);
     showToast("座位已按目前條件重新編排");
+  };
+
+  const clearAllSeats = () => {
+    const assignedCount = students.length - unassigned.length;
+    if (!assignedCount) return;
+    commitSeats(clearSeatAssignments(seats));
+    setSelectedSeat(null);
+    setSelectedUnassignedStudentId(null);
+    setUnassignedOpen(true);
+    showToast(`已清空 ${assignedCount} 個座位，學生已返回待編排名單`);
   };
 
   const changeRows = (value) => {
@@ -1122,9 +1139,34 @@ export function App() {
     }
     commitSeats(next);
     setSelectedSeat(targetIndex);
+    setSelectedUnassignedStudentId(null);
   };
 
   const handleSeatSelect = (targetIndex) => {
+    if (selectedUnassignedStudentId && selectedUnassignedStudent) {
+      const target = seats[targetIndex];
+      if (target.locked || target.disabled) {
+        showToast(target.disabled ? "這個座位不可用" : "請先解除座位鎖定");
+        return;
+      }
+      const displacedStudent = studentMap.get(target.studentId);
+      commitSeats(
+        seats.map((seat, index) =>
+          index === targetIndex
+            ? { ...seat, studentId: selectedUnassignedStudentId }
+            : { ...seat },
+        ),
+      );
+      setSelectedSeat(targetIndex);
+      setSelectedUnassignedStudentId(null);
+      showToast(
+        displacedStudent
+          ? `${selectedUnassignedStudent.chineseName} 已入座，${displacedStudent.chineseName} 返回待編排名單`
+          : `${selectedUnassignedStudent.chineseName} 已入座`,
+      );
+      return;
+    }
+
     if (selectedSeat === null || selectedSeat === targetIndex) {
       setSelectedSeat(selectedSeat === targetIndex ? null : targetIndex);
       return;
@@ -1145,6 +1187,20 @@ export function App() {
     commitSeats(next);
     setSelectedSeat(targetIndex);
     showToast("座位已互換");
+  };
+
+  const handleUnassignedStudentSelect = (studentId) => {
+    setSelectedSeat(null);
+    setSelectedUnassignedStudentId((current) =>
+      current === studentId ? null : studentId,
+    );
+  };
+
+  const handleDragStart = (payload) => {
+    dragPayload.current = payload;
+    setSelectedUnassignedStudentId(
+      payload.type === "student" ? payload.studentId : null,
+    );
   };
 
   const updateSelectedSeat = (changes) => {
@@ -1173,6 +1229,7 @@ export function App() {
     setPast([]);
     setFuture([]);
     setSourceLabel(label);
+    setSelectedUnassignedStudentId(null);
     setImportOpen(false);
     setImportError("");
     setActiveStep(2);
@@ -1276,6 +1333,7 @@ export function App() {
     setFemaleMonitor2("");
     setSourceLabel("尚未載入名單");
     setSelectedSeat(null);
+    setSelectedUnassignedStudentId(null);
     setPast([]);
     setFuture([]);
     showToast("已清空所有學生名單");
@@ -1380,18 +1438,65 @@ export function App() {
                     <span>{rows} 行 × {cols} 列</span>
                     <span>{methodLabels[config.method]}</span>
                   </div>
-                  {!rulesOpen && (
-                    <button type="button" className="secondary-button" onClick={() => setRulesOpen(true)}>
-                      <PanelRightOpen size={17} />
-                      顯示條件
+                  <div className="workspace-actions">
+                    <button
+                      type="button"
+                      className="secondary-button clear-seats-button"
+                      onClick={clearAllSeats}
+                      disabled={!students.length || unassigned.length === students.length}
+                    >
+                      <Trash2 size={17} />
+                      清空全部座位
                     </button>
-                  )}
+                    {!rulesOpen && (
+                      <button type="button" className="secondary-button" onClick={() => setRulesOpen(true)}>
+                        <PanelRightOpen size={17} />
+                        顯示條件
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="class-statistics" aria-label="班別人數統計">
                   <span><Users size={16} /> 全班人數：<strong>{classStatistics.total}</strong> 人</span>
                   <span>男：<strong>{classStatistics.male}</strong> 人（{classStatistics.malePercentage}%）</span>
                   <span>女：<strong>{classStatistics.female}</strong> 人（{classStatistics.femalePercentage}%）</span>
+                </div>
+
+                <div className={`unassigned-tray ${unassignedOpen ? "open" : ""}`}>
+                  <button type="button" className="tray-heading" onClick={() => setUnassignedOpen((open) => !open)}>
+                    <span>待編排學生（按學號） <strong>{unassigned.length}</strong></span>
+                    {unassignedOpen ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
+                  {unassignedOpen && (
+                    <>
+                      <p className="tray-help">
+                        {selectedUnassignedStudent
+                          ? `已選 ${selectedUnassignedStudent.number} ${selectedUnassignedStudent.chineseName}，請點選或拖到座位。`
+                          : "點選學生後再點座位，或直接把學生卡拖到適當位置。"}
+                      </p>
+                      <div className="student-chip-row" aria-live="polite">
+                        {unassigned.length ? unassigned.map((student) => (
+                          <button
+                            type="button"
+                            draggable
+                            aria-pressed={selectedUnassignedStudentId === student.id}
+                            className={`student-chip ${selectedUnassignedStudentId === student.id ? "selected" : ""}`}
+                            key={student.id}
+                            onClick={() => handleUnassignedStudentSelect(student.id)}
+                            onDragStart={() => handleDragStart({ type: "student", studentId: student.id })}
+                          >
+                            <GripVertical size={15} />
+                            <span className="student-chip-number">{student.number}</span>
+                            <span className="student-chip-names">
+                              <strong>{student.chineseName}</strong>
+                              <small>{student.englishName}</small>
+                            </span>
+                          </button>
+                        )) : <span className="all-assigned"><Check size={15} /> 所有學生已編排</span>}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <ClassroomPlan
@@ -1402,33 +1507,9 @@ export function App() {
                   studentMap={studentMap}
                   selectedSeat={selectedSeat}
                   onSelect={handleSeatSelect}
-                  onDragStart={(payload) => { dragPayload.current = payload; }}
+                  onDragStart={handleDragStart}
                   onDrop={onDrop}
                 />
-
-                <div className={`unassigned-tray ${unassignedOpen ? "open" : ""}`}>
-                  <button type="button" className="tray-heading" onClick={() => setUnassignedOpen((open) => !open)}>
-                    <span>未編排學生 <strong>{unassigned.length}</strong></span>
-                    {unassignedOpen ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-                  </button>
-                  {unassignedOpen && (
-                    <div className="student-chip-row">
-                      {unassigned.length ? unassigned.map((student) => (
-                        <button
-                          type="button"
-                          draggable
-                          className="student-chip"
-                          key={student.id}
-                          onDragStart={() => { dragPayload.current = { type: "student", studentId: student.id }; }}
-                        >
-                          <GripVertical size={14} />
-                          <span>{student.number}</span>
-                          <strong>{student.chineseName}</strong>
-                        </button>
-                      )) : <span className="all-assigned"><Check size={15} /> 所有學生已編排</span>}
-                    </div>
-                  )}
-                </div>
 
                 <div className="step-footer arrange-footer">
                   <button type="button" className="secondary-button" onClick={() => setActiveStep(1)}>

@@ -13,6 +13,14 @@ export function createInitialSeats(students, rows, cols) {
   }));
 }
 
+export function clearSeatAssignments(seats) {
+  return seats.map((seat) => ({
+    ...seat,
+    studentId: null,
+    locked: false,
+  }));
+}
+
 export function resizeSeats(seats, oldRows, oldCols, newRows, newCols) {
   const next = createEmptySeats(newRows, newCols);
   const rowsToCopy = Math.min(oldRows, newRows);
@@ -106,5 +114,7 @@ export function getUnassignedStudents(students, seats) {
   const assigned = new Set(
     seats.map((seat) => seat.studentId).filter(Boolean),
   );
-  return students.filter((student) => !assigned.has(student.id));
+  return students
+    .filter((student) => !assigned.has(student.id))
+    .sort(byNumber);
 }

@@ -360,6 +360,19 @@ button:disabled {
   border-right: 0;
 }
 
+.workspace-actions {
+  justify-content: flex-end;
+}
+
+.clear-seats-button {
+  color: #9b3d32;
+  border-color: #e2bbb5;
+}
+
+.clear-seats-button:hover:not(:disabled) {
+  background: var(--red-soft);
+}
+
 .class-statistics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -860,7 +873,7 @@ textarea {
 }
 
 .unassigned-tray {
-  margin-top: 10px;
+  margin: 10px 0;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
@@ -887,35 +900,80 @@ textarea {
   font-size: 11px;
 }
 
-.student-chip-row {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  overflow: auto hidden;
-  padding: 8px 10px 10px;
+.tray-help {
+  margin: 0;
+  padding: 9px 12px;
   border-top: 1px solid var(--line);
+  color: var(--muted);
+  background: #f8faf9;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.student-chip-row {
+  min-height: 58px;
+  max-height: 232px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  align-items: stretch;
+  gap: 8px;
+  overflow: auto;
+  padding: 8px 10px 10px;
 }
 
 .student-chip {
-  min-width: max-content;
-  height: 32px;
+  min-width: 0;
+  min-height: 48px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 6px 8px;
   border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: #fff;
   cursor: grab;
   font-size: 12px;
+  text-align: left;
 }
 
-.student-chip span {
+.student-chip:hover {
+  border-color: #9dacb7;
+  background: var(--surface-soft);
+}
+
+.student-chip.selected {
+  border-color: var(--orange);
+  background: var(--orange-soft);
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.13);
+}
+
+.student-chip-number {
+  flex: 0 0 26px;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.student-chip-names {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.student-chip-names strong,
+.student-chip-names small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.student-chip-names small {
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .all-assigned {
+  grid-column: 1 / -1;
   gap: 6px;
   color: #39765a;
   font-size: 12px;
@@ -1589,10 +1647,20 @@ textarea {
 
   .workspace-meta {
     align-items: flex-start;
+    flex-direction: column;
   }
 
   .workspace-meta > div {
+    width: 100%;
     gap: 6px;
+  }
+
+  .workspace-actions {
+    justify-content: stretch;
+  }
+
+  .workspace-actions button {
+    flex: 1 1 auto;
   }
 
   .workspace-meta span {
@@ -1652,6 +1720,11 @@ textarea {
 
   .canvas-hint {
     align-items: flex-start;
+  }
+
+  .student-chip-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 270px;
   }
 
   .arrange-footer,
