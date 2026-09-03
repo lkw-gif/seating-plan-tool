@@ -7,10 +7,12 @@ import {
   ChevronUp,
   CircleAlert,
   Cloud,
+  CloudUpload,
   DoorOpen,
   Download,
   FileSpreadsheet,
   FileText,
+  FolderOpen,
   GripVertical,
   Info,
   Link2,
@@ -22,6 +24,7 @@ import {
   Printer,
   Redo2,
   Search,
+  Save,
   Shuffle,
   Trash2,
   Undo2,
@@ -37,6 +40,13 @@ import {
   parseRosterFile,
   parseRosterText,
 } from "./importers.js";
+import {
+  createCloudPlan,
+  deleteCloudPlan,
+  getCloudPlan,
+  listCloudPlans,
+  updateCloudPlan,
+} from "./cloudPlans.js";
 import {
   autoArrangeSeats,
   clearSeatAssignments,
@@ -73,6 +83,23 @@ function formatMonitorOption(student) {
   return [student.number, student.chineseName]
     .filter(Boolean)
     .join(" · ");
+}
+
+function formatCloudError(error) {
+  if (error?.code === "sign-in-required" || error?.status === 401) {
+    return "請先登入私人新版網站，才可以使用雲端方案。";
+  }
+  if (error?.code === "cloud-not-configured" || error?.status === 503) {
+    return "目前網址未啟用雲端儲存，請使用私人新版網站。";
+  }
+  return error?.message || "雲端服務暫時未能使用，請稍後再試。";
+}
+
+function clampGridValue(value, minimum, maximum, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? Math.min(maximum, Math.max(minimum, Math.round(number)))
+    : fallback;
 }
 
 function loadSavedPlan() {
@@ -683,6 +710,137 @@ function ImportDialog({
   );
 }
 
+function CloudPlanDialog({
+  open,
+  onClose,
+  plans,
+  planTitle,
+  onPlanTitleChange,
+  onSave,
+  onLoad,
+  onDelete,
+  onNew,
+  currentPlanId,
+  loading,
+  saving,
+  status,
+  error,
+}) {
+  if (!open) return null;
+
+  const statusMessage =
+    status === "sign-in-required"
+      ? "請先登入平台帳戶；登入後方案會只與你的帳戶連結。"
+      : "目前網址未啟用雲端儲存，請使用私人新版網站登入後使用此功能。";
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="plan-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plan-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">雲端儲存</span>
+            <h2 id="plan-title">儲存及載入方案</h2>
+          </div>
+          <IconButton label="關閉" onClick={onClose}>
+            <X size={20} />
+          </IconButton>
+        </div>
+
+        <div className="dialog-body">
+          {status !== "ready" ? (
+            <div className="cloud-unavailable" role="status">
+              <Cloud size={22} />
+              <div>
+                <strong>雲端儲存未能使用</strong>
+                <p>{loading ? "正在檢查雲端服務..." : statusMessage}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="cloud-plan-note">
+                方案會儲存座位、名單、班長及版面設定，並只供目前登入帳戶使用。
+              </p>
+              <div className="plan-save-form">
+                <label>
+                  方案名稱
+                  <input
+                    value={planTitle}
+                    onChange={(event) => onPlanTitleChange(event.target.value)}
+                    placeholder="例如：2B 第一課節座位表"
+                    maxLength="80"
+                  />
+                </label>
+                <div className="plan-save-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={onSave}
+                    disabled={loading || saving || !planTitle.trim()}
+                  >
+                    <Save size={17} />
+                    {saving ? "正在儲存..." : currentPlanId ? "更新方案" : "儲存方案"}
+                  </button>
+                  {currentPlanId && (
+                    <button type="button" className="secondary-button" onClick={onNew} disabled={saving}>
+                      <Plus size={17} />
+                      另存新方案
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="plan-list">
+                <div className="plan-list-heading">
+                  <h3>我的方案</h3>
+                  <button type="button" className="icon-button" onClick={onNew} title="建立新方案" aria-label="建立新方案">
+                    <Plus size={17} />
+                  </button>
+                </div>
+                {loading ? (
+                  <p className="muted-copy">正在讀取已儲存方案...</p>
+                ) : plans.length ? (
+                  plans.map((plan) => (
+                    <div className={`plan-row ${currentPlanId === plan.id ? "active" : ""}`} key={plan.id}>
+                      <div>
+                        <strong>{plan.title}</strong>
+                        <small>最後更新：{new Date(plan.updatedAt).toLocaleString("zh-HK")}</small>
+                      </div>
+                      <div className="plan-row-actions">
+                        <button type="button" className="secondary-button" onClick={() => onLoad(plan.id)} disabled={saving}>
+                          <FolderOpen size={15} />
+                          載入
+                        </button>
+                        <IconButton label={`刪除 ${plan.title}`} onClick={() => onDelete(plan)} disabled={saving}>
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted-copy">尚未儲存方案。輸入名稱後按「儲存方案」。</p>
+                )}
+              </div>
+            </>
+          )}
+
+          {error && (
+            <div className="dialog-error" role="alert">
+              <CircleAlert size={17} />
+              {error}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function RosterStep({
   students,
   search,
@@ -911,6 +1069,10 @@ export function App() {
     saved.femaleMonitor2 ?? "",
   );
   const [sourceLabel, setSourceLabel] = useState(initialSourceLabel);
+  const [currentPlanId, setCurrentPlanId] = useState(saved.currentPlanId ?? "");
+  const [planTitle, setPlanTitle] = useState(
+    saved.planTitle ?? (saved.className ? `${saved.className} 座位表` : ""),
+  );
   const [driveRoster, setDriveRoster] = useState(loadDriveRosterSession);
   const [homeroomTeachers, setHomeroomTeachers] = useState({});
   const [selectedSeat, setSelectedSeat] = useState(null);
@@ -925,6 +1087,12 @@ export function App() {
   const [unassignedOpen, setUnassignedOpen] = useState(true);
   const [selectedUnassignedStudentId, setSelectedUnassignedStudentId] =
     useState(null);
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
+  const [cloudPlans, setCloudPlans] = useState([]);
+  const [cloudStatus, setCloudStatus] = useState("unknown");
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudSaving, setCloudSaving] = useState(false);
+  const [cloudError, setCloudError] = useState("");
   const dragPayload = useRef(null);
   const toastTimer = useRef(null);
   const printRef = useRef(null);
@@ -991,6 +1159,8 @@ export function App() {
         femaleMonitor,
         femaleMonitor2,
         sourceLabel,
+        currentPlanId,
+        planTitle,
       }),
     );
   }, [
@@ -1007,6 +1177,8 @@ export function App() {
     femaleMonitor,
     femaleMonitor2,
     sourceLabel,
+    currentPlanId,
+    planTitle,
   ]);
 
   useEffect(() => {
@@ -1339,6 +1511,152 @@ export function App() {
     showToast("已清空所有學生名單");
   };
 
+  const createPlanSnapshot = () => ({
+    version: 1,
+    students,
+    rows,
+    cols,
+    columnGaps,
+    seats,
+    config,
+    className,
+    teachers,
+    maleMonitor,
+    maleMonitor2,
+    femaleMonitor,
+    femaleMonitor2,
+    sourceLabel,
+  });
+
+  const restorePlanSnapshot = (data) => {
+    const nextRows = clampGridValue(data?.rows, 2, 10, 5);
+    const nextCols = clampGridValue(data?.cols, 2, 10, 7);
+    const nextStudents = Array.isArray(data?.students) ? data.students : [];
+    const nextSeats =
+      Array.isArray(data?.seats) && data.seats.length === nextRows * nextCols
+        ? data.seats.map((seat) => ({
+            studentId: seat.studentId ?? null,
+            locked: Boolean(seat.locked),
+            disabled: Boolean(seat.disabled),
+          }))
+        : createEmptySeats(nextRows, nextCols);
+    const nextMethod = Object.hasOwn(methodLabels, data?.config?.method)
+      ? data.config.method
+      : defaultConfig.method;
+
+    setStudents(nextStudents);
+    setRows(nextRows);
+    setCols(nextCols);
+    setColumnGaps(normalizeColumnGaps(data?.columnGaps, nextCols));
+    setSeats(nextSeats);
+    setConfig({ ...defaultConfig, method: nextMethod });
+    setClassName(typeof data?.className === "string" && data.className ? data.className : "2D");
+    setTeachers(typeof data?.teachers === "string" ? data.teachers : "");
+    setMaleMonitor(typeof data?.maleMonitor === "string" ? data.maleMonitor : "");
+    setMaleMonitor2(typeof data?.maleMonitor2 === "string" ? data.maleMonitor2 : "");
+    setFemaleMonitor(typeof data?.femaleMonitor === "string" ? data.femaleMonitor : "");
+    setFemaleMonitor2(typeof data?.femaleMonitor2 === "string" ? data.femaleMonitor2 : "");
+    setSourceLabel(
+      typeof data?.sourceLabel === "string" && data.sourceLabel
+        ? data.sourceLabel
+        : "尚未載入名單",
+    );
+    setDriveRoster(null);
+    sessionStorage.removeItem("seat-planner-drive-roster");
+    setSelectedSeat(null);
+    setSelectedUnassignedStudentId(null);
+    setPast([]);
+    setFuture([]);
+    setSearch("");
+    setUnassignedOpen(true);
+    setActiveStep(nextStudents.length ? 2 : 1);
+  };
+
+  const refreshCloudPlans = async () => {
+    setCloudLoading(true);
+    setCloudError("");
+    try {
+      const result = await listCloudPlans();
+      setCloudPlans(result?.plans ?? []);
+      setCloudStatus("ready");
+    } catch (error) {
+      setCloudStatus(error?.code === "sign-in-required" ? "sign-in-required" : "unavailable");
+      setCloudError(formatCloudError(error));
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const openPlanDialog = () => {
+    setPlanDialogOpen(true);
+    refreshCloudPlans();
+  };
+
+  const saveCloudPlan = async () => {
+    const nextTitle = planTitle.trim();
+    if (!nextTitle) return;
+    setCloudSaving(true);
+    setCloudError("");
+    try {
+      const result = currentPlanId
+        ? await updateCloudPlan(currentPlanId, nextTitle, createPlanSnapshot())
+        : await createCloudPlan(nextTitle, createPlanSnapshot());
+      const savedPlan = result.plan;
+      setCurrentPlanId(savedPlan.id);
+      setPlanTitle(savedPlan.title);
+      setCloudStatus("ready");
+      await refreshCloudPlans();
+      showToast(`已儲存「${savedPlan.title}」`);
+    } catch (error) {
+      setCloudError(formatCloudError(error));
+    } finally {
+      setCloudSaving(false);
+    }
+  };
+
+  const loadSavedCloudPlan = async (planId) => {
+    setCloudLoading(true);
+    setCloudError("");
+    try {
+      const result = await getCloudPlan(planId);
+      const savedPlan = result.plan;
+      restorePlanSnapshot(savedPlan.data);
+      setCurrentPlanId(savedPlan.id);
+      setPlanTitle(savedPlan.title);
+      setPlanDialogOpen(false);
+      showToast(`已載入「${savedPlan.title}」`);
+    } catch (error) {
+      setCloudError(formatCloudError(error));
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const deleteSavedCloudPlan = async (plan) => {
+    if (!window.confirm(`確定要刪除「${plan.title}」？此操作不能復原。`)) return;
+    setCloudSaving(true);
+    setCloudError("");
+    try {
+      await deleteCloudPlan(plan.id);
+      setCloudPlans((current) => current.filter((item) => item.id !== plan.id));
+      if (currentPlanId === plan.id) {
+        setCurrentPlanId("");
+        setPlanTitle(`${className} 座位表`);
+      }
+      showToast(`已刪除「${plan.title}」`);
+    } catch (error) {
+      setCloudError(formatCloudError(error));
+    } finally {
+      setCloudSaving(false);
+    }
+  };
+
+  const startNewCloudPlan = () => {
+    setCurrentPlanId("");
+    setPlanTitle(`${className} 座位表`);
+    setCloudError("");
+  };
+
   const handleDocxExport = async () => {
     try {
       await exportPlanDocx({
@@ -1410,6 +1728,18 @@ export function App() {
             ))}
           </select>
         </label>
+        <div className="cloud-toolbar">
+          <button
+            type="button"
+            className="secondary-button"
+            aria-label="儲存及載入雲端方案"
+            title="儲存及載入雲端方案"
+            onClick={openPlanDialog}
+          >
+            <CloudUpload size={17} />
+            <span>儲存方案</span>
+          </button>
+        </div>
         <div className="source-chip"><Cloud size={16} /> {sourceLabel}</div>
         {arrangeToolbar}
       </header>
@@ -1693,6 +2023,26 @@ export function App() {
         onAddStudent={addStudent}
         busy={importBusy}
         error={importError}
+      />
+
+      <CloudPlanDialog
+        open={planDialogOpen}
+        onClose={() => {
+          setPlanDialogOpen(false);
+          setCloudError("");
+        }}
+        plans={cloudPlans}
+        planTitle={planTitle}
+        onPlanTitleChange={setPlanTitle}
+        onSave={saveCloudPlan}
+        onLoad={loadSavedCloudPlan}
+        onDelete={deleteSavedCloudPlan}
+        onNew={startNewCloudPlan}
+        currentPlanId={currentPlanId}
+        loading={cloudLoading}
+        saving={cloudSaving}
+        status={cloudStatus}
+        error={cloudError}
       />
 
       {toast && <div className="toast" role="status"><Check size={17} /> {toast}</div>}
