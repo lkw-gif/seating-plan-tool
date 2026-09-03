@@ -18,6 +18,8 @@ import {
   Link2,
   Lock,
   LockOpen,
+  LogIn,
+  LogOut,
   PanelRightClose,
   PanelRightOpen,
   Plus,
@@ -43,8 +45,11 @@ import {
 import {
   createCloudPlan,
   deleteCloudPlan,
+  getCloudAccount,
   getCloudPlan,
+  getGoogleSignInUrl,
   listCloudPlans,
+  signOutCloudAccount,
   updateCloudPlan,
 } from "./cloudPlans.js";
 import {
@@ -87,12 +92,21 @@ function formatMonitorOption(student) {
 
 function formatCloudError(error) {
   if (error?.code === "sign-in-required" || error?.status === 401) {
-    return "請先登入私人新版網站，才可以使用雲端方案。";
+    return "請先使用 Google 登入，才可以使用雲端方案。";
+  }
+  if (error?.code === "google-auth-not-configured") {
+    return "Google 登入尚未完成一次性設定。";
   }
   if (error?.code === "cloud-not-configured" || error?.status === 503) {
-    return "目前網址未啟用雲端儲存，請使用私人新版網站。";
+    return "目前網址未啟用雲端儲存。";
   }
   return error?.message || "雲端服務暫時未能使用，請稍後再試。";
+}
+
+function getCloudStatus(error) {
+  if (error?.code === "sign-in-required" || error?.status === 401) return "sign-in-required";
+  if (error?.code === "google-auth-not-configured") return "not-configured";
+  return "unavailable";
 }
 
 function clampGridValue(value, minimum, maximum, fallback) {
@@ -725,13 +739,14 @@ function CloudPlanDialog({
   saving,
   status,
   error,
+  account,
+  onSignOut,
 }) {
   if (!open) return null;
 
-  const statusMessage =
-    status === "sign-in-required"
-      ? "請先登入平台帳戶；登入後方案會只與你的帳戶連結。"
-      : "目前網址未啟用雲端儲存，請使用私人新版網站登入後使用此功能。";
+  const statusMessage = status === "not-configured"
+    ? "管理員尚未完成 Google 登入設定。"
+    : "目前網址未啟用雲端儲存，請使用正式雲端版本。";
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -753,7 +768,23 @@ function CloudPlanDialog({
         </div>
 
         <div className="dialog-body">
-          {status !== "ready" ? (
+          {status === "sign-in-required" ? (
+            <div className="cloud-unavailable google-sign-in-panel" role="status">
+              <Cloud size={22} />
+              <div>
+                <strong>登入後使用雲端方案</strong>
+                <p>每位老師的方案會按 Google 帳戶分開，其他老師不能讀取。</p>
+                <a
+                  className="primary-button google-sign-in-button"
+                  href={getGoogleSignInUrl("/")}
+                  target="_top"
+                >
+                  <LogIn size={17} />
+                  使用 Google 登入
+                </a>
+              </div>
+            </div>
+          ) : status !== "ready" ? (
             <div className="cloud-unavailable" role="status">
               <Cloud size={22} />
               <div>
@@ -763,8 +794,18 @@ function CloudPlanDialog({
             </div>
           ) : (
             <>
+              <div className="cloud-account-row">
+                <div>
+                  <strong>{account?.name || "Google 帳戶"}</strong>
+                  <span>{account?.email}</span>
+                </div>
+                <button type="button" className="secondary-button" onClick={onSignOut} disabled={saving}>
+                  <LogOut size={16} />
+                  登出
+                </button>
+              </div>
               <p className="cloud-plan-note">
-                方案會儲存座位、名單、班長及版面設定，並只供目前登入帳戶使用。
+                方案會儲存座位、名單、班長及版面設定，並只供這個 Google 帳戶使用。
               </p>
               <div className="plan-save-form">
                 <label>
@@ -1090,6 +1131,7 @@ export function App() {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [cloudPlans, setCloudPlans] = useState([]);
   const [cloudStatus, setCloudStatus] = useState("unknown");
+  const [cloudAccount, setCloudAccount] = useState(null);
   const [cloudLoading, setCloudLoading] = useState(false);
   const [cloudSaving, setCloudSaving] = useState(false);
   const [cloudError, setCloudError] = useState("");
@@ -1141,6 +1183,45 @@ export function App() {
   const selectedUnassignedStudent = selectedUnassignedStudentId
     ? studentMap.get(selectedUnassignedStudentId)
     : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    const url = new URL(window.location.href);
+    const loginResult = url.searchParams.get("google_login");
+    const loginReason = url.searchParams.get("reason");
+    if (loginResult) {
+      url.searchParams.delete("google_login");
+      url.searchParams.delete("reason");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+      if (loginResult === "success") {
+        setToast("已使用 Google 登入");
+        toastTimer.current = window.setTimeout(() => setToast(""), 3000);
+      } else {
+        setPlanDialogOpen(true);
+        setCloudError(
+          loginReason === "domain-not-allowed"
+            ? "請使用獲准的學校 Google 帳戶登入。"
+            : "Google 登入未能完成，請再試一次。",
+        );
+      }
+    }
+
+    getCloudAccount()
+      .then((result) => {
+        if (cancelled) return;
+        setCloudAccount(result.user);
+        setCloudStatus("ready");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCloudAccount(null);
+        setCloudStatus(getCloudStatus(error));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(
@@ -1576,11 +1657,16 @@ export function App() {
     setCloudLoading(true);
     setCloudError("");
     try {
-      const result = await listCloudPlans();
-      setCloudPlans(result?.plans ?? []);
+      const [accountResult, plansResult] = await Promise.all([
+        getCloudAccount(),
+        listCloudPlans(),
+      ]);
+      setCloudAccount(accountResult.user);
+      setCloudPlans(plansResult?.plans ?? []);
       setCloudStatus("ready");
     } catch (error) {
-      setCloudStatus(error?.code === "sign-in-required" ? "sign-in-required" : "unavailable");
+      setCloudAccount(null);
+      setCloudStatus(getCloudStatus(error));
       setCloudError(formatCloudError(error));
     } finally {
       setCloudLoading(false);
@@ -1655,6 +1741,23 @@ export function App() {
     setCurrentPlanId("");
     setPlanTitle(`${className} 座位表`);
     setCloudError("");
+  };
+
+  const signOutCloud = async () => {
+    setCloudSaving(true);
+    setCloudError("");
+    try {
+      await signOutCloudAccount();
+      setCloudAccount(null);
+      setCloudPlans([]);
+      setCloudStatus("sign-in-required");
+      setCurrentPlanId("");
+      showToast("已登出 Google 帳戶");
+    } catch (error) {
+      setCloudError(formatCloudError(error));
+    } finally {
+      setCloudSaving(false);
+    }
   };
 
   const handleDocxExport = async () => {
@@ -1737,7 +1840,7 @@ export function App() {
             onClick={openPlanDialog}
           >
             <CloudUpload size={17} />
-            <span>儲存方案</span>
+            <span>{cloudAccount ? "我的雲端" : cloudStatus === "sign-in-required" ? "Google 登入" : "儲存方案"}</span>
           </button>
         </div>
         <div className="source-chip"><Cloud size={16} /> {sourceLabel}</div>
@@ -2043,6 +2146,8 @@ export function App() {
         saving={cloudSaving}
         status={cloudStatus}
         error={cloudError}
+        account={cloudAccount}
+        onSignOut={signOutCloud}
       />
 
       {toast && <div className="toast" role="status"><Check size={17} /> {toast}</div>}

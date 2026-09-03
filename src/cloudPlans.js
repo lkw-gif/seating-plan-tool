@@ -1,10 +1,9 @@
-const plansPath = "/api/plans";
-
-async function request(path = "", options = {}) {
+async function request(path, options = {}) {
   let response;
   try {
-    response = await fetch(`${plansPath}${path}`, {
+    response = await fetch(path, {
       ...options,
+      credentials: "same-origin",
       headers: {
         ...(options.body ? { "Content-Type": "application/json" } : {}),
         ...options.headers,
@@ -34,27 +33,39 @@ async function request(path = "", options = {}) {
 }
 
 export function listCloudPlans() {
-  return request();
+  return request("/api/plans");
 }
 
 export function createCloudPlan(title, data) {
-  return request("", {
+  return request("/api/plans", {
     method: "POST",
     body: JSON.stringify({ title, data }),
   });
 }
 
 export function updateCloudPlan(id, title, data) {
-  return request(`/${encodeURIComponent(id)}`, {
+  return request(`/api/plans/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify({ title, data }),
   });
 }
 
 export function getCloudPlan(id) {
-  return request(`/${encodeURIComponent(id)}`);
+  return request(`/api/plans/${encodeURIComponent(id)}`);
 }
 
 export function deleteCloudPlan(id) {
-  return request(`/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request(`/api/plans/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function getCloudAccount() {
+  return request("/api/auth/me");
+}
+
+export function signOutCloudAccount() {
+  return request("/api/auth/logout", { method: "POST" });
+}
+
+export function getGoogleSignInUrl(returnTo = "/") {
+  return `/api/auth/google/start?returnTo=${encodeURIComponent(returnTo)}`;
 }

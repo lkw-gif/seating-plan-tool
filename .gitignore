@@ -6,6 +6,7 @@ AGENTS.md
 design-qa.md
 .env
 .env.*
+!.env.example
 *.local
 *.log
 .DS_Store

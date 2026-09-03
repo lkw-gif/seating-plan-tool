@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import { access } from "node:fs/promises";
 import test from "node:test";
 import worker from "../worker/index.js";
+import { createSessionToken } from "../worker/google-auth.js";
+
+const authEnvironment = {
+  GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+  GOOGLE_CLIENT_SECRET: "test-client-secret",
+  SESSION_SECRET: "test-session-secret-that-is-at-least-32-characters-long",
+};
 
 test("serves existing static assets without a fallback", async () => {
   const calls = [];
@@ -64,19 +71,66 @@ test("does not turn missing API or write requests into the app shell", async () 
 test("requires an authenticated user for cloud plans", async () => {
   const response = await worker.fetch(
     new Request("https://example.test/api/plans"),
-    { DB: createMockDatabase(), ASSETS: createAssets() },
+    { ...authEnvironment, DB: createMockDatabase(), ASSETS: createAssets() },
   );
 
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), {
-    message: "請先登入網站帳戶，才可以使用雲端方案。",
+    message: "請先使用 Google 登入，才可以使用雲端方案。",
     code: "sign-in-required",
   });
 });
 
+test("returns the signed-in Google account from a valid session", async () => {
+  const cookie = await createGoogleCookie("teacher-a", "teacher-a@example.edu");
+  const response = await worker.fetch(
+    new Request("https://example.test/api/auth/me", { headers: { cookie } }),
+    { ...authEnvironment, ASSETS: createAssets() },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    user: {
+      sub: "teacher-a",
+      email: "teacher-a@example.edu",
+      name: "teacher-a",
+      picture: "",
+      hd: "",
+    },
+  });
+
+  const tamperedResponse = await worker.fetch(
+    new Request("https://example.test/api/auth/me", {
+      headers: { cookie: `${cookie}broken` },
+    }),
+    { ...authEnvironment, ASSETS: createAssets() },
+  );
+  assert.equal(tamperedResponse.status, 401);
+});
+
+test("starts Google OAuth with state, nonce, and PKCE", async () => {
+  const response = await worker.fetch(
+    new Request("https://example.test/api/auth/google/start?returnTo=%2Fflow"),
+    { ...authEnvironment, ASSETS: createAssets() },
+  );
+
+  assert.equal(response.status, 302);
+  const location = new URL(response.headers.get("location"));
+  assert.equal(location.origin, "https://accounts.google.com");
+  assert.equal(location.searchParams.get("client_id"), authEnvironment.GOOGLE_CLIENT_ID);
+  assert.equal(location.searchParams.get("redirect_uri"), "https://example.test/api/auth/google/callback");
+  assert.ok(location.searchParams.get("state"));
+  assert.ok(location.searchParams.get("nonce"));
+  assert.ok(location.searchParams.get("code_challenge"));
+  assert.equal(location.searchParams.get("code_challenge_method"), "S256");
+  assert.match(response.headers.get("set-cookie") || "", /seating_google_state/);
+});
+
 test("keeps cloud plans private to the authenticated owner", async () => {
   const database = createMockDatabase();
-  const environment = { DB: database, ASSETS: createAssets() };
+  const environment = { ...authEnvironment, DB: database, ASSETS: createAssets() };
+  const teacherACookie = await createGoogleCookie("teacher-a", "teacher-a@example.edu");
+  const teacherBCookie = await createGoogleCookie("teacher-b", "teacher-b@example.edu");
   const planData = {
     className: "2B",
     students: [{ id: "student-1", number: "01" }],
@@ -87,7 +141,7 @@ test("keeps cloud plans private to the authenticated owner", async () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "oai-authenticated-user-id": "teacher-a",
+        cookie: teacherACookie,
       },
       body: JSON.stringify({ title: "2B 第一課節", data: planData }),
     }),
@@ -101,7 +155,7 @@ test("keeps cloud plans private to the authenticated owner", async () => {
 
   const ownerList = await worker.fetch(
     new Request("https://example.test/api/plans", {
-      headers: { "oai-authenticated-user-id": "teacher-a" },
+      headers: { cookie: teacherACookie },
     }),
     environment,
   );
@@ -109,7 +163,7 @@ test("keeps cloud plans private to the authenticated owner", async () => {
 
   const otherTeacherList = await worker.fetch(
     new Request("https://example.test/api/plans", {
-      headers: { "oai-authenticated-user-id": "teacher-b" },
+      headers: { cookie: teacherBCookie },
     }),
     environment,
   );
@@ -118,7 +172,7 @@ test("keeps cloud plans private to the authenticated owner", async () => {
   const planId = created.plan.id;
   const otherTeacherRead = await worker.fetch(
     new Request(`https://example.test/api/plans/${planId}`, {
-      headers: { "oai-authenticated-user-id": "teacher-b" },
+      headers: { cookie: teacherBCookie },
     }),
     environment,
   );
@@ -129,7 +183,7 @@ test("keeps cloud plans private to the authenticated owner", async () => {
       method: "PUT",
       headers: {
         "content-type": "application/json",
-        "oai-authenticated-user-id": "teacher-a",
+        cookie: teacherACookie,
       },
       body: JSON.stringify({ title: "2B 第二課節", data: { ...planData, rows: 5 } }),
     }),
@@ -141,7 +195,7 @@ test("keeps cloud plans private to the authenticated owner", async () => {
   const deleteResponse = await worker.fetch(
     new Request(`https://example.test/api/plans/${planId}`, {
       method: "DELETE",
-      headers: { "oai-authenticated-user-id": "teacher-a" },
+      headers: { cookie: teacherACookie },
     }),
     environment,
   );
@@ -152,9 +206,18 @@ test("emits the files required by Sites packaging", async () => {
   await access(new URL("../dist/client/index.html", import.meta.url));
   await access(new URL("../dist/server/index.js", import.meta.url));
   await access(new URL("../dist/server/storage.js", import.meta.url));
+  await access(new URL("../dist/server/google-auth.js", import.meta.url));
   await access(new URL("../dist/db/schema.js", import.meta.url));
   await access(new URL("../dist/.openai/hosting.json", import.meta.url));
 });
+
+async function createGoogleCookie(sub, email) {
+  const token = await createSessionToken(
+    { sub, email, name: email.split("@")[0] },
+    authEnvironment.SESSION_SECRET,
+  );
+  return `__Host-seating_google_session=${encodeURIComponent(token)}`;
+}
 
 function createAssets() {
   return { fetch: async () => new Response("missing", { status: 404 }) };

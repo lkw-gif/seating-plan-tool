@@ -1417,6 +1417,45 @@ textarea {
   line-height: 1.55;
 }
 
+.google-sign-in-panel > div {
+  flex: 1;
+}
+
+.google-sign-in-button {
+  width: fit-content;
+  margin-top: 13px;
+  text-decoration: none;
+}
+
+.cloud-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.cloud-account-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.cloud-account-row strong,
+.cloud-account-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-account-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .dialog-form .primary-button {
   justify-self: end;
 }
@@ -1893,6 +1932,15 @@ textarea {
   .plan-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .cloud-account-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-account-row .secondary-button {
+    align-self: flex-start;
   }
 
   .plan-row-actions {

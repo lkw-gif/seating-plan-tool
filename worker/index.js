@@ -5,6 +5,11 @@ import {
   removePlan,
   updatePlan,
 } from "./storage.js";
+import {
+  getGoogleUser,
+  handleGoogleAuth,
+  isGoogleAuthConfigured,
+} from "./google-auth.js";
 
 const maxPlanBytes = 1_500_000;
 
@@ -17,10 +22,6 @@ function jsonResponse(payload, status = 200, headers = {}) {
       ...headers,
     },
   });
-}
-
-function getUserId(request) {
-  return request.headers.get("oai-authenticated-user-id")?.trim() || null;
 }
 
 function apiError(message, code, status) {
@@ -67,10 +68,15 @@ async function handlePlans(request, env, url) {
     return new Response(null, { status: 204 });
   }
 
-  const userId = getUserId(request);
-  if (!userId) {
-    return apiError("請先登入網站帳戶，才可以使用雲端方案。", "sign-in-required", 401);
+  if (!isGoogleAuthConfigured(env)) {
+    return apiError("Google 登入尚未完成設定。", "google-auth-not-configured", 503);
   }
+
+  const user = await getGoogleUser(request, env);
+  if (!user) {
+    return apiError("請先使用 Google 登入，才可以使用雲端方案。", "sign-in-required", 401);
+  }
+  const userId = `google:${user.sub}`;
 
   const databaseError = requireDatabase(env);
   if (databaseError) return databaseError;
@@ -158,6 +164,13 @@ function serializePlan(plan) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/auth/")) {
+      try {
+        return await handleGoogleAuth(request, env, url);
+      } catch {
+        return apiError("Google 登入暫時未能使用，請稍後再試。", "google-auth-error", 500);
+      }
+    }
     if (url.pathname === "/api/plans" || url.pathname.startsWith("/api/plans/")) {
       try {
         return await handlePlans(request, env, url);
