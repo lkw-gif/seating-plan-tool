@@ -137,6 +137,10 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.cloud-toolbar {
+  margin-left: auto;
+}
+
 .source-chip {
   min-width: 0;
   max-width: 230px;
@@ -1177,6 +1181,15 @@ textarea {
   box-shadow: var(--shadow);
 }
 
+.plan-dialog {
+  width: min(700px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
 .dialog-heading {
   padding: 20px 22px 14px;
 }
@@ -1295,6 +1308,113 @@ textarea {
 .dialog-form {
   display: grid;
   gap: 14px;
+}
+
+.cloud-plan-note {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.plan-save-form {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.plan-save-actions,
+.plan-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.plan-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.plan-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plan-list-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.plan-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.plan-row.active {
+  border-color: #aecdbb;
+  background: var(--green-soft);
+}
+
+.plan-row > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.plan-row strong,
+.plan-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.plan-row-actions .secondary-button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.plan-row-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  color: var(--red);
+}
+
+.cloud-unavailable {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  color: var(--green-dark);
+  background: var(--green-soft);
+}
+
+.cloud-unavailable strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.cloud-unavailable p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .dialog-form .primary-button {
@@ -1627,6 +1747,19 @@ textarea {
     overflow: auto hidden;
   }
 
+  .cloud-toolbar {
+    margin-left: 0;
+  }
+
+  .cloud-toolbar button {
+    width: 38px;
+    padding: 0;
+  }
+
+  .cloud-toolbar button span {
+    display: none;
+  }
+
   .header-actions .secondary-button {
     display: none;
   }
@@ -1755,6 +1888,19 @@ textarea {
   .export-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .plan-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .plan-row-actions {
+    justify-content: stretch;
+  }
+
+  .plan-row-actions .secondary-button {
+    flex: 1 1 auto;
   }
 
   .dialog-tabs {
