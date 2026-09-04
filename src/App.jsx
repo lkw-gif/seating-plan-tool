@@ -47,8 +47,8 @@ import {
   deleteCloudPlan,
   getCloudAccount,
   getCloudPlan,
-  getGoogleSignInUrl,
   listCloudPlans,
+  signInCloudAccount,
   signOutCloudAccount,
   updateCloudPlan,
 } from "./cloudPlans.js";
@@ -94,6 +94,9 @@ function formatCloudError(error) {
   if (error?.code === "sign-in-required" || error?.status === 401) {
     return "請先使用 Google 登入，才可以使用雲端方案。";
   }
+  if (error?.code === "domain-not-allowed") {
+    return "請使用學校 keilong.edu.hk Google 帳戶登入。";
+  }
   if (error?.code === "google-auth-not-configured") {
     return "Google 登入尚未完成一次性設定。";
   }
@@ -105,6 +108,7 @@ function formatCloudError(error) {
 
 function getCloudStatus(error) {
   if (error?.code === "sign-in-required" || error?.status === 401) return "sign-in-required";
+  if (error?.code === "domain-not-allowed") return "sign-in-required";
   if (error?.code === "google-auth-not-configured") return "not-configured";
   return "unavailable";
 }
@@ -740,13 +744,14 @@ function CloudPlanDialog({
   status,
   error,
   account,
+  onSignIn,
   onSignOut,
 }) {
   if (!open) return null;
 
   const statusMessage = status === "not-configured"
     ? "管理員尚未完成 Google 登入設定。"
-    : "目前網址未啟用雲端儲存，請使用正式雲端版本。";
+    : "目前未能連接 Google Drive，請稍後再試。";
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -774,14 +779,15 @@ function CloudPlanDialog({
               <div>
                 <strong>登入後使用雲端方案</strong>
                 <p>每位老師的方案會按 Google 帳戶分開，其他老師不能讀取。</p>
-                <a
+                <button
+                  type="button"
                   className="primary-button google-sign-in-button"
-                  href={getGoogleSignInUrl("/")}
-                  target="_top"
+                  onClick={onSignIn}
+                  disabled={loading}
                 >
                   <LogIn size={17} />
-                  使用 Google 登入
-                </a>
+                  {loading ? "正在連接 Google..." : "使用 Google 登入"}
+                </button>
               </div>
             </div>
           ) : status !== "ready" ? (
@@ -805,7 +811,7 @@ function CloudPlanDialog({
                 </button>
               </div>
               <p className="cloud-plan-note">
-                方案會儲存座位、名單、班長及版面設定，並只供這個 Google 帳戶使用。
+                方案會儲存在你的 Google Drive 應用程式資料內，並只供這個 Google 帳戶使用。
               </p>
               <div className="plan-save-form">
                 <label>
@@ -1678,6 +1684,25 @@ export function App() {
     refreshCloudPlans();
   };
 
+  const signInCloud = async () => {
+    setCloudLoading(true);
+    setCloudError("");
+    try {
+      const accountResult = await signInCloudAccount();
+      setCloudAccount(accountResult.user);
+      setCloudStatus("ready");
+      const plansResult = await listCloudPlans();
+      setCloudPlans(plansResult?.plans ?? []);
+      showToast("已使用學校 Google 帳戶登入");
+    } catch (error) {
+      setCloudAccount(null);
+      setCloudStatus(getCloudStatus(error));
+      setCloudError(formatCloudError(error));
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
   const saveCloudPlan = async () => {
     const nextTitle = planTitle.trim();
     if (!nextTitle) return;
@@ -2147,6 +2172,7 @@ export function App() {
         status={cloudStatus}
         error={cloudError}
         account={cloudAccount}
+        onSignIn={signInCloud}
         onSignOut={signOutCloud}
       />
 
