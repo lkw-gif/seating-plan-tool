@@ -37,14 +37,15 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { exportPlanDocx, exportPlanPdf } from "./exporters.js";
 import {
-  loadGoogleDriveHomeroomTeachers,
   loadGoogleDriveRoster,
   parseRosterFile,
+  parseSchoolWorkbook,
   parseRosterText,
 } from "./importers.js";
 import {
   createCloudPlan,
   deleteCloudPlan,
+  downloadSchoolRosterWorkbook,
   getCloudAccount,
   getCloudPlan,
   listCloudPlans,
@@ -72,9 +73,6 @@ const methodLabels = {
   "number-column-left": "依學號直排（左至右）",
   "number-column-right": "依學號直排（右至左）",
 };
-
-const DEFAULT_HOMEROOM_TEACHERS_URL =
-  "https://docs.google.com/spreadsheets/d/18nw6bnE-TRKrXOlOEagTb_FQbxjsv5_q/edit?usp=sharing";
 
 function normalizeClassCode(value) {
   return String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
@@ -600,7 +598,7 @@ function ImportDialog({
                 />
               </label>
               <p className="field-help">
-                請輸入你有權限讀取的名單；系統會讀取 A 至 E 欄：班別、學號、中文名、英文名、性別；可以有或沒有表頭。
+                自行名單可按四欄排列：學號、中文名、英文名、性別；如包含班別，請放在第一欄。
               </p>
               <button
                 type="button"
@@ -893,6 +891,7 @@ function RosterStep({
   search,
   setSearch,
   sourceLabel,
+  schoolSignedIn,
   onOpenImport,
   onClearRoster,
   onDeleteStudent,
@@ -938,7 +937,9 @@ function RosterStep({
         </div>
         <p className="source-guidance">
           <Info size={16} />
-          請按「匯入或新增學生」，在 Google Drive 讀取全校名單
+          {schoolSignedIn
+            ? "學校名單已由 Google Drive 自動讀取；可在上方直接選擇班別"
+            : "未登入可按「匯入或新增學生」，使用四欄格式匯入自己的名單"}
         </p>
       </div>
 
@@ -1079,14 +1080,15 @@ function PrintPlan({
 export function App() {
   const saved = useMemo(loadSavedPlan, []);
   const savedDemoRoster = saved.sourceLabel === "示範名單";
+  const savedRestrictedRoster = String(saved.sourceLabel || "").startsWith("學校名單");
   const savedStudents =
-    savedDemoRoster
+    savedDemoRoster || savedRestrictedRoster
       ? []
       : Array.isArray(saved.students)
         ? saved.students
         : [];
   const initialSourceLabel =
-    savedDemoRoster || !savedStudents.length
+    savedDemoRoster || savedRestrictedRoster || !savedStudents.length
       ? "尚未載入名單"
       : saved.sourceLabel ?? "尚未載入名單";
   const [activeStep, setActiveStep] = useState(savedStudents.length ? 2 : 1);
@@ -1097,7 +1099,7 @@ export function App() {
     normalizeColumnGaps(saved.columnGaps, saved.cols ?? 7),
   );
   const [seats, setSeats] = useState(
-    savedDemoRoster
+    savedDemoRoster || savedRestrictedRoster
       ? createInitialSeats(savedStudents, saved.rows ?? 5, saved.cols ?? 7)
       : saved.seats ?? createInitialSeats(savedStudents, saved.rows ?? 5, saved.cols ?? 7),
   );
@@ -1230,23 +1232,24 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const restrictedRoster = sourceLabel.startsWith("學校名單");
     localStorage.setItem(
       "seat-planner-v1",
       JSON.stringify({
-        students,
+        students: restrictedRoster ? [] : students,
         rows,
         cols,
         columnGaps,
-        seats,
+        seats: restrictedRoster ? createEmptySeats(rows, cols) : seats,
         config,
         className,
-        teachers,
-        maleMonitor,
-        maleMonitor2,
-        femaleMonitor,
-        femaleMonitor2,
-        sourceLabel,
-        currentPlanId,
+        teachers: restrictedRoster ? "" : teachers,
+        maleMonitor: restrictedRoster ? "" : maleMonitor,
+        maleMonitor2: restrictedRoster ? "" : maleMonitor2,
+        femaleMonitor: restrictedRoster ? "" : femaleMonitor,
+        femaleMonitor2: restrictedRoster ? "" : femaleMonitor2,
+        sourceLabel: restrictedRoster ? "尚未載入名單" : sourceLabel,
+        currentPlanId: restrictedRoster ? "" : currentPlanId,
         planTitle,
       }),
     );
@@ -1269,27 +1272,15 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (driveRoster) {
+    if (driveRoster && !driveRoster.restricted) {
       sessionStorage.setItem(
         "seat-planner-drive-roster",
         JSON.stringify(driveRoster),
       );
+    } else {
+      sessionStorage.removeItem("seat-planner-drive-roster");
     }
   }, [driveRoster]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadGoogleDriveHomeroomTeachers(DEFAULT_HOMEROOM_TEACHERS_URL)
-      .then((result) => {
-        if (!cancelled) setHomeroomTeachers(result);
-      })
-      .catch(() => {
-        // Keep the saved/manual value when the shared file is temporarily unavailable.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const defaultTeachers = homeroomTeachers[normalizeClassCode(className)];
@@ -1515,6 +1506,13 @@ export function App() {
     sessionStorage.removeItem("seat-planner-drive-roster");
     try {
       const result = await loadGoogleDriveRoster(url);
+      if (!result.classes.length) {
+        applyRoster(
+          result.students.map((student) => ({ ...student, className })),
+          "Google Drive 名單",
+        );
+        return result;
+      }
       setDriveRoster(result);
       showToast(`已讀取 ${result.classes.length} 個班別`);
       return result;
@@ -1538,7 +1536,12 @@ export function App() {
       setImportError(`找不到 ${classCode} 的學生資料。`);
       return;
     }
-    applyRoster(classStudents, `Google Drive · ${classCode}`);
+    applyRoster(
+      classStudents,
+      driveRoster?.restricted
+        ? `學校名單 · ${classCode}`
+        : `Google Drive · ${classCode}`,
+    );
   };
 
   const importText = (text) => {
@@ -1686,19 +1689,43 @@ export function App() {
   };
 
   const signInCloud = async () => {
+    let signedInUser = null;
     setCloudLoading(true);
     setCloudError("");
     try {
       const accountResult = await signInCloudAccount();
+      signedInUser = accountResult.user;
       setCloudAccount(accountResult.user);
       setCloudStatus("ready");
-      const plansResult = await listCloudPlans();
+      const [plansResult, schoolWorkbook] = await Promise.all([
+        listCloudPlans().catch(() => ({ plans: [] })),
+        downloadSchoolRosterWorkbook(),
+      ]);
       setCloudPlans(plansResult?.plans ?? []);
-      showToast("已使用學校 Google 帳戶登入");
+      const schoolRoster = parseSchoolWorkbook(schoolWorkbook);
+      const restrictedRoster = { ...schoolRoster, restricted: true };
+      setDriveRoster(restrictedRoster);
+      setHomeroomTeachers(schoolRoster.teachersByClass);
+
+      const targetClass = schoolRoster.classes.includes(className)
+        ? className
+        : schoolRoster.classes[0];
+      const classStudents = schoolRoster.students.filter(
+        (student) => student.className === targetClass,
+      );
+      applyRoster(classStudents, `學校名單 · ${targetClass}`);
+      setPlanDialogOpen(false);
+      showToast(`已登入並自動載入 ${targetClass}（${classStudents.length} 位學生）`);
     } catch (error) {
-      setCloudAccount(null);
-      setCloudStatus(getCloudStatus(error));
-      setCloudError(formatCloudError(error));
+      if (signedInUser) {
+        setCloudAccount(signedInUser);
+        setCloudStatus("ready");
+        setCloudError(`已登入，但未能自動讀取學校名單：${formatCloudError(error)}`);
+      } else {
+        setCloudAccount(null);
+        setCloudStatus(getCloudStatus(error));
+        setCloudError(formatCloudError(error));
+      }
     } finally {
       setCloudLoading(false);
     }
@@ -1778,6 +1805,19 @@ export function App() {
       setCloudPlans([]);
       setCloudStatus("sign-in-required");
       setCurrentPlanId("");
+      if (sourceLabel.startsWith("學校名單")) {
+        setStudents([]);
+        setSeats(createEmptySeats(rows, cols));
+        setDriveRoster(null);
+        setHomeroomTeachers({});
+        setTeachers("");
+        setMaleMonitor("");
+        setMaleMonitor2("");
+        setFemaleMonitor("");
+        setFemaleMonitor2("");
+        setSourceLabel("尚未載入名單");
+        setActiveStep(1);
+      }
       showToast("已登出 Google 帳戶");
     } catch (error) {
       setCloudError(formatCloudError(error));
@@ -1882,6 +1922,7 @@ export function App() {
               search={search}
               setSearch={setSearch}
               sourceLabel={sourceLabel}
+              schoolSignedIn={Boolean(cloudAccount)}
               onOpenImport={() => setImportOpen(true)}
               onClearRoster={clearRoster}
               onDeleteStudent={deleteStudent}

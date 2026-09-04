@@ -8,9 +8,11 @@ const GOOGLE_SCOPE = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/drive.appdata",
+  "https://www.googleapis.com/auth/drive.readonly",
 ].join(" ");
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
+const SCHOOL_ROSTER_FILE_ID = "1nbcmUVagKQCKrz4mho56ryDAvwJhUxd6";
 const APP_PROPERTY_KEY = "seatingPlanTool";
 const APP_PROPERTY_VALUE = "cloud-plan";
 
@@ -236,6 +238,19 @@ async function uploadPlan({ id = "", title, data, createdAt }) {
 export async function signInCloudAccount() {
   await requestAccessToken("select_account");
   return { user: await loadAccount() };
+}
+
+export async function downloadSchoolRosterWorkbook() {
+  const metadataResponse = await googleRequest(
+    `${DRIVE_API}/files/${SCHOOL_ROSTER_FILE_ID}?fields=id,name,mimeType`,
+  );
+  const metadata = await metadataResponse.json();
+  const isGoogleSheet = metadata.mimeType === "application/vnd.google-apps.spreadsheet";
+  const downloadUrl = isGoogleSheet
+    ? `${DRIVE_API}/files/${SCHOOL_ROSTER_FILE_ID}/export?mimeType=${encodeURIComponent("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}`
+    : `${DRIVE_API}/files/${SCHOOL_ROSTER_FILE_ID}?alt=media`;
+  const response = await googleRequest(downloadUrl);
+  return response.arrayBuffer();
 }
 
 export async function getCloudAccount() {

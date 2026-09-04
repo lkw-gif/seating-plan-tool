@@ -144,15 +144,18 @@ export function parseRosterText(text) {
   return rowsToStudents(result.data);
 }
 
-function workbookToStudents(buffer) {
+function workbookToRows(buffer) {
   const workbook = XLSX.read(buffer, { type: "array" });
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(worksheet, {
+  return XLSX.utils.sheet_to_json(worksheet, {
     header: 1,
     defval: "",
     raw: false,
-  }).map((row) => row.slice(0, 5));
-  return rowsToStudents(rows);
+  });
+}
+
+function workbookToStudents(buffer) {
+  return rowsToStudents(workbookToRows(buffer).map((row) => row.slice(0, 5)));
 }
 
 export function rowsToHomeroomTeachers(rawRows) {
@@ -208,14 +211,44 @@ export function rowsToHomeroomTeachers(rawRows) {
 }
 
 function workbookToHomeroomTeachers(buffer) {
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(worksheet, {
-    header: 1,
-    defval: "",
-    raw: false,
-  });
-  return rowsToHomeroomTeachers(rows);
+  return rowsToHomeroomTeachers(workbookToRows(buffer));
+}
+
+function groupStudentsByClass(students, requireClasses = false) {
+  const classedStudents = students.filter((student) => student.className);
+  const classes = [...new Set(
+    classedStudents.map((student) => student.className),
+  )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  if (requireClasses && !classes.length) {
+    throw new Error(
+      "找不到班別資料。學校名單 A 至 E 欄必須為 classcode、classno、chname、enname、sex。 ",
+    );
+  }
+
+  return {
+    students: classes.length ? classedStudents : students,
+    classes,
+  };
+}
+
+export function parseSchoolWorkbook(buffer) {
+  const rows = workbookToRows(buffer);
+  const roster = groupStudentsByClass(
+    rowsToStudents(rows.map((row) => row.slice(0, 5))),
+    true,
+  );
+
+  let teachersByClass = {};
+  try {
+    teachersByClass = rowsToHomeroomTeachers(
+      rows.map((row) => row.slice(6, 10)),
+    );
+  } catch {
+    // Teacher columns G to J are optional; keep existing/manual names when absent.
+  }
+
+  return { ...roster, teachersByClass };
 }
 
 export async function parseRosterFile(file) {
@@ -276,18 +309,7 @@ export async function loadGoogleDriveRoster(rawUrl) {
     students = parseRosterText(await response.text());
   }
 
-  const classedStudents = students.filter((student) => student.className);
-  const classes = [...new Set(
-    classedStudents.map((student) => student.className),
-  )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-  if (!classes.length) {
-    throw new Error(
-      "找不到班別資料。請按 A 至 E 排列：班別、學號、中文名、英文名、性別；可以有或沒有表頭。 ",
-    );
-  }
-
-  return { students: classedStudents, classes };
+  return groupStudentsByClass(students);
 }
 
 export async function loadGoogleDriveHomeroomTeachers(rawUrl) {
