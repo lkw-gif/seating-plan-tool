@@ -1671,9 +1671,10 @@ export function App() {
       setCloudPlans(plansResult?.plans ?? []);
       setCloudStatus("ready");
     } catch (error) {
+      const nextStatus = getCloudStatus(error);
       setCloudAccount(null);
-      setCloudStatus(getCloudStatus(error));
-      setCloudError(formatCloudError(error));
+      setCloudStatus(nextStatus);
+      setCloudError(nextStatus === "sign-in-required" ? "" : formatCloudError(error));
     } finally {
       setCloudLoading(false);
     }

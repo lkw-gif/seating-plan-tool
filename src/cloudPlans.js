@@ -71,6 +71,11 @@ async function requestAccessToken(prompt = "") {
   await loadGoogleIdentity();
 
   tokenRequestPromise = new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      tokenRequestPromise = null;
+      reject(cloudError("Google 登入視窗未有回應，請再試一次。", "sign-in-required", 401));
+    }, 30_000);
+
     if (!tokenClient) {
       tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
@@ -81,6 +86,7 @@ async function requestAccessToken(prompt = "") {
     }
 
     tokenClient.callback = (response) => {
+      window.clearTimeout(timeoutId);
       tokenRequestPromise = null;
       if (!response?.access_token || response.error) {
         reject(cloudError("Google 登入未能完成，請再試一次。", "sign-in-required", 401));
@@ -91,6 +97,7 @@ async function requestAccessToken(prompt = "") {
       resolve(accessToken);
     };
     tokenClient.error_callback = () => {
+      window.clearTimeout(timeoutId);
       tokenRequestPromise = null;
       reject(cloudError("Google 登入視窗已關閉，請再試一次。", "sign-in-required", 401));
     };
@@ -282,4 +289,8 @@ export async function getCloudPlan(id) {
 export async function deleteCloudPlan(id) {
   await googleRequest(`${DRIVE_API}/files/${encodeURIComponent(id)}`, { method: "DELETE" });
   return { deleted: true };
+}
+
+if (typeof window !== "undefined") {
+  loadGoogleIdentity().catch(() => {});
 }
