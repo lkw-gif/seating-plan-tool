@@ -22,7 +22,6 @@ import {
   LogOut,
   PanelRightClose,
   PanelRightOpen,
-  Pencil,
   Plus,
   Printer,
   Redo2,
@@ -728,80 +727,6 @@ function ImportDialog({
   );
 }
 
-function EditStudentDialog({ student, onClose, onSave }) {
-  const [draft, setDraft] = useState({ chineseName: "", englishName: "" });
-
-  useEffect(() => {
-    setDraft({
-      chineseName: student?.chineseName ?? "",
-      englishName: student?.englishName ?? "",
-    });
-  }, [student]);
-
-  if (!student) return null;
-
-  return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <section
-        className="import-dialog edit-student-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-student-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="dialog-heading">
-          <div>
-            <span className="eyebrow">學生資料</span>
-            <h2 id="edit-student-title">編輯學生資料</h2>
-          </div>
-          <IconButton label="關閉" onClick={onClose}>
-            <X size={20} />
-          </IconButton>
-        </div>
-        <form
-          className="dialog-body dialog-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSave(student.id, draft);
-          }}
-        >
-          <div className="student-id-summary">
-            <span>學號</span>
-            <strong>{student.number || "未設定"}</strong>
-            <span>性別</span>
-            <strong>{student.gender || "未設定"}</strong>
-          </div>
-          <label>
-            中文名
-            <input
-              required
-              value={draft.chineseName}
-              onChange={(event) => setDraft({ ...draft, chineseName: event.target.value })}
-              autoFocus
-            />
-          </label>
-          <label>
-            英文名
-            <input
-              value={draft.englishName}
-              onChange={(event) => setDraft({ ...draft, englishName: event.target.value })}
-            />
-          </label>
-          <div className="dialog-actions">
-            <button type="button" className="secondary-button" onClick={onClose}>
-              取消
-            </button>
-            <button type="submit" className="primary-button">
-              <Save size={17} />
-              儲存更改
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
-}
-
 function CloudPlanDialog({
   open,
   onClose,
@@ -970,15 +895,21 @@ function RosterStep({
   schoolSignedIn,
   onOpenImport,
   onClearRoster,
-  onEditStudent,
+  studentEdits,
+  onStudentEditChange,
+  onSaveStudentEdits,
   onDeleteStudent,
   onContinue,
 }) {
-  const filtered = students.filter((student) =>
+  const filtered = students.map((student) => ({
+    ...student,
+    ...studentEdits[student.id],
+  })).filter((student) =>
     `${student.number} ${student.chineseName} ${student.englishName}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const hasStudentEdits = Object.keys(studentEdits).length > 0;
   return (
     <div className="roster-step">
       <div className="page-heading">
@@ -1049,13 +980,24 @@ function RosterStep({
               filtered.map((student) => (
                 <tr key={student.id}>
                   <td>{student.number}</td>
-                  <td><strong>{student.chineseName}</strong></td>
-                  <td>{student.englishName}</td>
+                  <td>
+                    <input
+                      className="roster-name-input roster-chinese-name"
+                      aria-label={`修改 ${student.number} 的中文名`}
+                      value={student.chineseName}
+                      onChange={(event) => onStudentEditChange(student.id, "chineseName", event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="roster-name-input"
+                      aria-label={`修改 ${student.number} 的英文名`}
+                      value={student.englishName}
+                      onChange={(event) => onStudentEditChange(student.id, "englishName", event.target.value)}
+                    />
+                  </td>
                   <td>{student.gender || "—"}</td>
                   <td>
-                    <IconButton label={`編輯 ${student.chineseName}`} onClick={() => onEditStudent(student)}>
-                      <Pencil size={16} />
-                    </IconButton>
                     <IconButton label={`刪除 ${student.chineseName}`} onClick={() => onDeleteStudent(student.id)}>
                       <Trash2 size={16} />
                     </IconButton>
@@ -1071,6 +1013,18 @@ function RosterStep({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="roster-save-bar">
+        <button
+          type="button"
+          className="primary-button"
+          disabled={!hasStudentEdits}
+          onClick={onSaveStudentEdits}
+        >
+          <Save size={17} />
+          儲存所有學生資料
+        </button>
       </div>
 
       <div className="step-footer">
@@ -1238,7 +1192,7 @@ export function App() {
   const [driveRoster, setDriveRoster] = useState(loadDriveRosterSession);
   const [homeroomTeachers, setHomeroomTeachers] = useState({});
   const [selectedSeat, setSelectedSeat] = useState(null);
-  const [editingStudent, setEditingStudent] = useState(null);
+  const [studentEdits, setStudentEdits] = useState({});
   const [rulesOpen, setRulesOpen] = useState(true);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -1581,6 +1535,7 @@ export function App() {
   const applyRoster = (nextStudents, label) => {
     const rosterClass = nextStudents.find((student) => student.className)?.className;
     setStudents(nextStudents);
+    setStudentEdits({});
     if (rosterClass) setClassName(rosterClass);
     const blankSeats = createEmptySeats(rows, cols);
     setSeats(
@@ -1691,6 +1646,11 @@ export function App() {
 
   const deleteStudent = (studentId) => {
     setStudents((current) => current.filter((student) => student.id !== studentId));
+    setStudentEdits((current) => {
+      const next = { ...current };
+      delete next[studentId];
+      return next;
+    });
     commitSeats(
       seats.map((seat) =>
         seat.studentId === studentId ? { ...seat, studentId: null } : { ...seat },
@@ -1699,25 +1659,57 @@ export function App() {
     showToast("學生已從名單移除");
   };
 
-  const saveStudentDetails = (studentId, details) => {
-    const chineseName = String(details.chineseName || "").trim();
-    const englishName = String(details.englishName || "").trim();
-    if (!chineseName) return;
+  const updateStudentEdit = (studentId, field, value) => {
+    const original = students.find((student) => student.id === studentId);
+    if (!original) return;
+
+    setStudentEdits((current) => {
+      const nextEdit = {
+        chineseName: current[studentId]?.chineseName ?? original.chineseName,
+        englishName: current[studentId]?.englishName ?? original.englishName,
+        [field]: value,
+      };
+      if (
+        nextEdit.chineseName === original.chineseName &&
+        nextEdit.englishName === original.englishName
+      ) {
+        const next = { ...current };
+        delete next[studentId];
+        return next;
+      }
+      return { ...current, [studentId]: nextEdit };
+    });
+  };
+
+  const saveStudentEdits = () => {
+    const invalidEdit = Object.values(studentEdits).find(
+      (edit) => !String(edit.chineseName || "").trim(),
+    );
+    if (invalidEdit) {
+      showToast("中文名不可留空");
+      return;
+    }
 
     setStudents((current) =>
-      current.map((student) =>
-        student.id === studentId
-          ? { ...student, chineseName, englishName }
-          : student,
-      ),
+      current.map((student) => {
+        const edit = studentEdits[student.id];
+        return edit
+          ? {
+              ...student,
+              chineseName: edit.chineseName.trim(),
+              englishName: edit.englishName.trim(),
+            }
+          : student;
+      }),
     );
-    setEditingStudent(null);
-    showToast("學生資料已更新，座位安排已保留");
+    setStudentEdits({});
+    showToast("學生資料已儲存，座位安排已保留");
   };
 
   const clearRoster = () => {
     if (!window.confirm("確定要清空所有學生名單？此操作不能復原。")) return;
     setStudents([]);
+    setStudentEdits({});
     setSeats(createEmptySeats(rows, cols));
     setDriveRoster(null);
     sessionStorage.removeItem("seat-planner-drive-roster");
@@ -1768,6 +1760,7 @@ export function App() {
       : defaultConfig.method;
 
     setStudents(nextStudents);
+    setStudentEdits({});
     setRows(nextRows);
     setCols(nextCols);
     setColumnGaps(normalizeColumnGaps(data?.columnGaps, nextCols));
@@ -1941,6 +1934,7 @@ export function App() {
       setCurrentPlanId("");
       if (sourceLabel.startsWith("學校名單")) {
         setStudents([]);
+        setStudentEdits({});
         setSeats(createEmptySeats(rows, cols));
         setDriveRoster(null);
         setHomeroomTeachers({});
@@ -2060,7 +2054,9 @@ export function App() {
               schoolSignedIn={Boolean(cloudAccount)}
               onOpenImport={() => setImportOpen(true)}
               onClearRoster={clearRoster}
-              onEditStudent={setEditingStudent}
+              studentEdits={studentEdits}
+              onStudentEditChange={updateStudentEdit}
+              onSaveStudentEdits={saveStudentEdits}
               onDeleteStudent={deleteStudent}
               onContinue={() => setActiveStep(2)}
             />
@@ -2340,12 +2336,6 @@ export function App() {
         onAddStudent={addStudent}
         busy={importBusy}
         error={importError}
-      />
-
-      <EditStudentDialog
-        student={editingStudent}
-        onClose={() => setEditingStudent(null)}
-        onSave={saveStudentDetails}
       />
 
       <CloudPlanDialog
