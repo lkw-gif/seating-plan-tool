@@ -22,6 +22,7 @@ import {
   LogOut,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
   Plus,
   Printer,
   Redo2,
@@ -727,6 +728,80 @@ function ImportDialog({
   );
 }
 
+function EditStudentDialog({ student, onClose, onSave }) {
+  const [draft, setDraft] = useState({ chineseName: "", englishName: "" });
+
+  useEffect(() => {
+    setDraft({
+      chineseName: student?.chineseName ?? "",
+      englishName: student?.englishName ?? "",
+    });
+  }, [student]);
+
+  if (!student) return null;
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="import-dialog edit-student-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-student-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">學生資料</span>
+            <h2 id="edit-student-title">編輯學生資料</h2>
+          </div>
+          <IconButton label="關閉" onClick={onClose}>
+            <X size={20} />
+          </IconButton>
+        </div>
+        <form
+          className="dialog-body dialog-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSave(student.id, draft);
+          }}
+        >
+          <div className="student-id-summary">
+            <span>學號</span>
+            <strong>{student.number || "未設定"}</strong>
+            <span>性別</span>
+            <strong>{student.gender || "未設定"}</strong>
+          </div>
+          <label>
+            中文名
+            <input
+              required
+              value={draft.chineseName}
+              onChange={(event) => setDraft({ ...draft, chineseName: event.target.value })}
+              autoFocus
+            />
+          </label>
+          <label>
+            英文名
+            <input
+              value={draft.englishName}
+              onChange={(event) => setDraft({ ...draft, englishName: event.target.value })}
+            />
+          </label>
+          <div className="dialog-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>
+              取消
+            </button>
+            <button type="submit" className="primary-button">
+              <Save size={17} />
+              儲存更改
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function CloudPlanDialog({
   open,
   onClose,
@@ -895,6 +970,7 @@ function RosterStep({
   schoolSignedIn,
   onOpenImport,
   onClearRoster,
+  onEditStudent,
   onDeleteStudent,
   onContinue,
 }) {
@@ -977,6 +1053,9 @@ function RosterStep({
                   <td>{student.englishName}</td>
                   <td>{student.gender || "—"}</td>
                   <td>
+                    <IconButton label={`編輯 ${student.chineseName}`} onClick={() => onEditStudent(student)}>
+                      <Pencil size={16} />
+                    </IconButton>
                     <IconButton label={`刪除 ${student.chineseName}`} onClick={() => onDeleteStudent(student.id)}>
                       <Trash2 size={16} />
                     </IconButton>
@@ -1159,6 +1238,7 @@ export function App() {
   const [driveRoster, setDriveRoster] = useState(loadDriveRosterSession);
   const [homeroomTeachers, setHomeroomTeachers] = useState({});
   const [selectedSeat, setSelectedSeat] = useState(null);
+  const [editingStudent, setEditingStudent] = useState(null);
   const [rulesOpen, setRulesOpen] = useState(true);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -1619,6 +1699,22 @@ export function App() {
     showToast("學生已從名單移除");
   };
 
+  const saveStudentDetails = (studentId, details) => {
+    const chineseName = String(details.chineseName || "").trim();
+    const englishName = String(details.englishName || "").trim();
+    if (!chineseName) return;
+
+    setStudents((current) =>
+      current.map((student) =>
+        student.id === studentId
+          ? { ...student, chineseName, englishName }
+          : student,
+      ),
+    );
+    setEditingStudent(null);
+    showToast("學生資料已更新，座位安排已保留");
+  };
+
   const clearRoster = () => {
     if (!window.confirm("確定要清空所有學生名單？此操作不能復原。")) return;
     setStudents([]);
@@ -1964,6 +2060,7 @@ export function App() {
               schoolSignedIn={Boolean(cloudAccount)}
               onOpenImport={() => setImportOpen(true)}
               onClearRoster={clearRoster}
+              onEditStudent={setEditingStudent}
               onDeleteStudent={deleteStudent}
               onContinue={() => setActiveStep(2)}
             />
@@ -2243,6 +2340,12 @@ export function App() {
         onAddStudent={addStudent}
         busy={importBusy}
         error={importError}
+      />
+
+      <EditStudentDialog
+        student={editingStudent}
+        onClose={() => setEditingStudent(null)}
+        onSave={saveStudentDetails}
       />
 
       <CloudPlanDialog
