@@ -1590,6 +1590,16 @@ textarea {
   font-size: 13px;
 }
 
+.print-sheet.is-reversed .print-door {
+  right: 0;
+  bottom: 0;
+  left: auto;
+  top: auto;
+  padding: 18px 0 2px 18px;
+  border-top: 0;
+  border-bottom: 1px solid #1d2226;
+}
+
 .print-board {
   width: 52%;
   height: 34px;
@@ -1609,9 +1619,17 @@ textarea {
   font-size: 12px;
 }
 
+.print-sheet.is-reversed .print-teacher-desk {
+  margin: 10px auto 12px;
+}
+
 .print-gender-legend {
   min-height: 28px;
   margin-bottom: 5px;
+}
+
+.print-sheet.is-reversed .print-gender-legend {
+  margin-top: 2px;
 }
 
 .print-seat-grid {

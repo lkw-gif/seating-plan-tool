@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { exportPlanDocx, exportPlanPdf } from "./exporters.js";
+import { getExportLayout } from "./exportLayout.js";
 import {
   loadGoogleDriveRoster,
   parseRosterFile,
@@ -1013,12 +1014,72 @@ function PrintPlan({
   cols,
   columnGaps,
   seats,
+  exportOrientation,
   studentMap,
   innerRef,
 }) {
-  const aisleAfter = getAisleAfter(columnGaps);
+  const exportLayout = getExportLayout({
+    seats,
+    rows,
+    cols,
+    columnGaps,
+    exportOrientation,
+  });
+  const aisleAfter = getAisleAfter(exportLayout.columnGaps);
+  const classroomFront = (
+    <div className="print-front">
+      <div className="print-door">門口</div>
+      <div className="print-board">黑板</div>
+    </div>
+  );
+  const teacherDesk = <div className="print-teacher-desk">教師桌</div>;
+  const genderLegend = (
+    <div className="print-gender-legend">
+      <span><i className="male-swatch" />男同學</span>
+      <span><i className="female-swatch" />女同學</span>
+    </div>
+  );
+  const seatGrid = (
+    <div
+      className="print-seat-grid"
+      style={{
+        "--seat-template": buildSeatGridTemplate(
+          cols,
+          exportLayout.columnGaps,
+          "minmax(70px, 1fr)",
+          "16px",
+        ),
+      }}
+    >
+      {exportLayout.seats.map((seat, index) => {
+        const student = studentMap.get(seat?.studentId);
+        const col = index % cols;
+        return (
+          <div
+            className={`print-seat ${seat?.disabled ? "disabled" : ""} ${student?.gender === "男" ? "gender-male" : ""} ${student?.gender === "女" ? "gender-female" : ""} ${aisleAfter.has(col) || col === cols - 1 ? "row-end" : ""}`}
+            key={seat?.id ?? index}
+            style={{
+              gridColumn: getSeatGridColumn(col, aisleAfter),
+              gridRow: Math.floor(index / cols) + 1,
+            }}
+          >
+            {seat?.disabled ? (
+              <span>不可用</span>
+            ) : student ? (
+              <>
+                <strong>{student.chineseName}</strong>
+                <span>{student.englishName}</span>
+                <small>{student.number}</small>
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="print-sheet" ref={innerRef}>
+    <div className={`print-sheet ${exportLayout.reversed ? "is-reversed" : ""}`} ref={innerRef}>
       <header className="print-header">
         <strong>班別：{className}</strong>
         <h2>課室座位表&nbsp; Seating Plan</h2>
@@ -1028,51 +1089,21 @@ function PrintPlan({
           <span>女班長：{femaleMonitor}</span>
         </span>
       </header>
-      <div className="print-front">
-        <div className="print-door">門口</div>
-        <div className="print-board">黑板</div>
-      </div>
-      <div className="print-teacher-desk">教師桌</div>
-      <div className="print-gender-legend">
-        <span><i className="male-swatch" />男同學</span>
-        <span><i className="female-swatch" />女同學</span>
-      </div>
-      <div
-        className="print-seat-grid"
-        style={{
-          "--seat-template": buildSeatGridTemplate(
-            cols,
-            columnGaps,
-            "minmax(70px, 1fr)",
-            "16px",
-          ),
-        }}
-      >
-        {seats.map((seat, index) => {
-          const student = studentMap.get(seat.studentId);
-          const col = index % cols;
-          return (
-            <div
-              className={`print-seat ${seat.disabled ? "disabled" : ""} ${student?.gender === "男" ? "gender-male" : ""} ${student?.gender === "女" ? "gender-female" : ""} ${aisleAfter.has(col) || col === cols - 1 ? "row-end" : ""}`}
-              key={index}
-              style={{
-                gridColumn: getSeatGridColumn(col, aisleAfter),
-                gridRow: Math.floor(index / cols) + 1,
-              }}
-            >
-              {seat.disabled ? (
-                <span>不可用</span>
-              ) : student ? (
-                <>
-                  <strong>{student.chineseName}</strong>
-                  <span>{student.englishName}</span>
-                  <small>{student.number}</small>
-                </>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+      {exportLayout.reversed ? (
+        <>
+          {genderLegend}
+          {seatGrid}
+          {teacherDesk}
+          {classroomFront}
+        </>
+      ) : (
+        <>
+          {classroomFront}
+          {teacherDesk}
+          {genderLegend}
+          {seatGrid}
+        </>
+      )}
     </div>
   );
 }
@@ -1116,6 +1147,9 @@ export function App() {
   const [femaleMonitor, setFemaleMonitor] = useState(saved.femaleMonitor ?? "");
   const [femaleMonitor2, setFemaleMonitor2] = useState(
     saved.femaleMonitor2 ?? "",
+  );
+  const [exportOrientation, setExportOrientation] = useState(
+    saved.exportOrientation === "reversed" ? "reversed" : "front",
   );
   const [sourceLabel, setSourceLabel] = useState(initialSourceLabel);
   const [currentPlanId, setCurrentPlanId] = useState(saved.currentPlanId ?? "");
@@ -1248,6 +1282,7 @@ export function App() {
         maleMonitor2: restrictedRoster ? "" : maleMonitor2,
         femaleMonitor: restrictedRoster ? "" : femaleMonitor,
         femaleMonitor2: restrictedRoster ? "" : femaleMonitor2,
+        exportOrientation,
         sourceLabel: restrictedRoster ? "尚未載入名單" : sourceLabel,
         currentPlanId: restrictedRoster ? "" : currentPlanId,
         planTitle,
@@ -1266,6 +1301,7 @@ export function App() {
     maleMonitor2,
     femaleMonitor,
     femaleMonitor2,
+    exportOrientation,
     sourceLabel,
     currentPlanId,
     planTitle,
@@ -1615,6 +1651,7 @@ export function App() {
     maleMonitor2,
     femaleMonitor,
     femaleMonitor2,
+    exportOrientation,
     sourceLabel,
   });
 
@@ -1646,6 +1683,7 @@ export function App() {
     setMaleMonitor2(typeof data?.maleMonitor2 === "string" ? data.maleMonitor2 : "");
     setFemaleMonitor(typeof data?.femaleMonitor === "string" ? data.femaleMonitor : "");
     setFemaleMonitor2(typeof data?.femaleMonitor2 === "string" ? data.femaleMonitor2 : "");
+    setExportOrientation(data?.exportOrientation === "reversed" ? "reversed" : "front");
     setSourceLabel(
       typeof data?.sourceLabel === "string" && data.sourceLabel
         ? data.sourceLabel
@@ -1838,6 +1876,7 @@ export function App() {
         columnGaps,
         seats,
         students,
+        exportOrientation,
       });
       showToast("DOCX 座位表已匯出");
     } catch {
@@ -2086,12 +2125,23 @@ export function App() {
                   cols={cols}
                   columnGaps={columnGaps}
                   seats={seats}
+                  exportOrientation={exportOrientation}
                   studentMap={studentMap}
                   innerRef={printRef}
                 />
               </div>
 
               <div className="preview-meta">
+                <label>
+                  匯出方向
+                  <select
+                    value={exportOrientation}
+                    onChange={(event) => setExportOrientation(event.target.value)}
+                  >
+                    <option value="front">黑板在上</option>
+                    <option value="reversed">黑板在下（座位調轉）</option>
+                  </select>
+                </label>
                 <label>
                   班別
                   <input value={className} onChange={(event) => setClassName(event.target.value)} />

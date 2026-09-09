@@ -16,6 +16,7 @@ import {
 } from "docx";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import { getExportLayout } from "./exportLayout.js";
 
 const thinBorder = {
   style: BorderStyle.SINGLE,
@@ -194,7 +195,103 @@ function aisleCell(width) {
   });
 }
 
-export async function exportPlanDocx({
+function createFrontTable(usableWidth, reversed) {
+  const emptyCell = (width) =>
+    new TableCell({
+      width: { size: width, type: WidthType.DXA },
+      borders: noBorders,
+      children: [new Paragraph("")],
+    });
+  const doorCell = new TableCell({
+    width: { size: 1500, type: WidthType.DXA },
+    verticalAlign: VerticalAlign.CENTER,
+    shading: { fill: "FFF7E6", type: ShadingType.CLEAR, color: "auto" },
+    borders: {
+      top: doorBorder,
+      bottom: doorBorder,
+      left: doorBorder,
+      right: doorBorder,
+    },
+    margins: { top: 25, bottom: 25, left: 60, right: 60 },
+    children: [
+      textParagraph("門口", {
+        alignment: AlignmentType.CENTER,
+        bold: true,
+        size: 20,
+        after: 0,
+        line: 200,
+      }),
+    ],
+  });
+  const boardCell = new TableCell({
+    width: { size: 7200, type: WidthType.DXA },
+    verticalAlign: VerticalAlign.CENTER,
+    shading: { fill: "315C47", type: ShadingType.CLEAR, color: "auto" },
+    borders: {
+      top: boardBorder,
+      bottom: boardBorder,
+      left: boardBorder,
+      right: boardBorder,
+    },
+    margins: { top: 25, bottom: 25, left: 60, right: 60 },
+    children: [
+      textParagraph("黑板", {
+        color: "FFFFFF",
+        bold: true,
+        size: 22,
+        after: 0,
+        line: 200,
+      }),
+    ],
+  });
+
+  return new Table({
+    alignment: AlignmentType.CENTER,
+    width: { size: usableWidth, type: WidthType.DXA },
+    columnWidths: [1500, 2250, 7200, 2250, 1500],
+    borders: noBorders,
+    rows: [
+      new TableRow({
+        height: { value: 430, rule: HeightRule.EXACT },
+        cantSplit: true,
+        children: reversed
+          ? [emptyCell(1500), emptyCell(2250), boardCell, emptyCell(2250), doorCell]
+          : [doorCell, emptyCell(2250), boardCell, emptyCell(2250), emptyCell(1500)],
+      }),
+    ],
+  });
+}
+
+function createTeacherDeskTable() {
+  return new Table({
+    alignment: AlignmentType.CENTER,
+    width: { size: 2500, type: WidthType.DXA },
+    columnWidths: [2500],
+    rows: [
+      new TableRow({
+        height: { value: 320, rule: HeightRule.EXACT },
+        cantSplit: true,
+        children: [
+          new TableCell({
+            shading: { fill: "E6CAA0", type: ShadingType.CLEAR, color: "auto" },
+            borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder },
+            margins: { top: 15, bottom: 15, left: 40, right: 40 },
+            children: [
+              textParagraph("教師桌", {
+                bold: true,
+                size: 19,
+                after: 0,
+                line: 190,
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+export function createPlanDocx({
   className,
   teachers,
   maleMonitor,
@@ -204,10 +301,18 @@ export async function exportPlanDocx({
   columnGaps,
   seats,
   students,
+  exportOrientation,
 }) {
+  const exportLayout = getExportLayout({
+    seats,
+    rows,
+    cols,
+    columnGaps,
+    exportOrientation,
+  });
   const studentMap = new Map(students.map((student) => [student.id, student]));
   const aisleAfter = new Set(
-    columnGaps
+    exportLayout.columnGaps
       .map((separated, index) => (separated ? index : null))
       .filter((index) => index !== null),
   );
@@ -225,7 +330,7 @@ export async function exportPlanDocx({
   const seatRows = Array.from({ length: rows }, (_, row) => {
     const cells = [];
     for (let col = 0; col < cols; col += 1) {
-      const seat = seats[row * cols + col];
+      const seat = exportLayout.seats[row * cols + col];
       cells.push(studentCell(seat, studentMap.get(seat.studentId), seatWidth));
       if (aisleAfter.has(col)) cells.push(aisleCell(aisleWidth));
     }
@@ -235,6 +340,17 @@ export async function exportPlanDocx({
       children: cells,
     });
   });
+
+  const seatTable = new Table({
+    alignment: AlignmentType.CENTER,
+    width: { size: usableWidth, type: WidthType.DXA },
+    columnWidths,
+    rows: seatRows,
+  });
+  const frontTable = createFrontTable(usableWidth, exportLayout.reversed);
+  const teacherDeskTable = createTeacherDeskTable();
+  const compactSpacer = new Paragraph({ spacing: { after: 15, line: 60 } });
+  const seatSpacer = new Paragraph({ spacing: { after: 35, line: 80 } });
 
   const document = new Document({
     styles: {
@@ -321,124 +437,20 @@ export async function exportPlanDocx({
             ],
           }),
           new Paragraph({ spacing: { after: 25, line: 80 } }),
-          new Table({
-            alignment: AlignmentType.CENTER,
-            width: { size: usableWidth, type: WidthType.DXA },
-            columnWidths: [1500, 2250, 7200, 2250, 1500],
-            borders: {
-              top: { style: BorderStyle.NONE },
-              bottom: { style: BorderStyle.NONE },
-              left: { style: BorderStyle.NONE },
-              right: { style: BorderStyle.NONE },
-              insideHorizontal: { style: BorderStyle.NONE },
-              insideVertical: { style: BorderStyle.NONE },
-            },
-            rows: [
-              new TableRow({
-                height: { value: 430, rule: HeightRule.EXACT },
-                cantSplit: true,
-                children: [
-                  new TableCell({
-                    width: { size: 1500, type: WidthType.DXA },
-                    verticalAlign: VerticalAlign.CENTER,
-                    shading: { fill: "FFF7E6", type: ShadingType.CLEAR, color: "auto" },
-                    borders: {
-                      top: doorBorder,
-                      bottom: doorBorder,
-                      left: doorBorder,
-                      right: doorBorder,
-                    },
-                    margins: { top: 25, bottom: 25, left: 60, right: 60 },
-                    children: [
-                      textParagraph("門口", {
-                        alignment: AlignmentType.CENTER,
-                        bold: true,
-                        size: 20,
-                        after: 0,
-                        line: 200,
-                      }),
-                    ],
-                  }),
-                  new TableCell({
-                    width: { size: 2250, type: WidthType.DXA },
-                    borders: noBorders,
-                    children: [new Paragraph("")],
-                  }),
-                  new TableCell({
-                    width: { size: 7200, type: WidthType.DXA },
-                    verticalAlign: VerticalAlign.CENTER,
-                    shading: { fill: "315C47", type: ShadingType.CLEAR, color: "auto" },
-                    borders: {
-                      top: boardBorder,
-                      bottom: boardBorder,
-                      left: boardBorder,
-                      right: boardBorder,
-                    },
-                    margins: { top: 25, bottom: 25, left: 60, right: 60 },
-                    children: [
-                      textParagraph("黑板", {
-                        color: "FFFFFF",
-                        bold: true,
-                        size: 22,
-                        after: 0,
-                        line: 200,
-                      }),
-                    ],
-                  }),
-                  new TableCell({
-                    width: { size: 2250, type: WidthType.DXA },
-                    borders: noBorders,
-                    children: [new Paragraph("")],
-                  }),
-                  new TableCell({
-                    width: { size: 1500, type: WidthType.DXA },
-                    borders: noBorders,
-                    children: [new Paragraph("")],
-                  }),
-                ],
-              }),
-            ],
-          }),
-          new Paragraph({ spacing: { after: 15, line: 60 } }),
-          new Table({
-            alignment: AlignmentType.CENTER,
-            width: { size: 2500, type: WidthType.DXA },
-            columnWidths: [2500],
-            rows: [
-              new TableRow({
-                height: { value: 320, rule: HeightRule.EXACT },
-                cantSplit: true,
-                children: [
-                  new TableCell({
-                    shading: { fill: "E6CAA0", type: ShadingType.CLEAR, color: "auto" },
-                    borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder },
-                    margins: { top: 15, bottom: 15, left: 40, right: 40 },
-                    children: [
-                      textParagraph("教師桌", {
-                        bold: true,
-                        size: 19,
-                        after: 0,
-                        line: 190,
-                      }),
-                    ],
-                  }),
-                ],
-              }),
-            ],
-          }),
-          new Paragraph({ spacing: { after: 35, line: 80 } }),
-          new Table({
-            alignment: AlignmentType.CENTER,
-            width: { size: usableWidth, type: WidthType.DXA },
-            columnWidths,
-            rows: seatRows,
-          }),
+          ...(exportLayout.reversed
+            ? [seatTable, compactSpacer, teacherDeskTable, compactSpacer, frontTable]
+            : [frontTable, compactSpacer, teacherDeskTable, seatSpacer, seatTable]),
         ],
       },
     ],
   });
 
-  downloadBlob(await Packer.toBlob(document), `${className}-座位表.docx`);
+  return document;
+}
+
+export async function exportPlanDocx(options) {
+  const document = createPlanDocx(options);
+  downloadBlob(await Packer.toBlob(document), `${options.className}-座位表.docx`);
 }
 
 export async function exportPlanPdf(element, filename) {
